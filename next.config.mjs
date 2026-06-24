@@ -11,7 +11,9 @@ const nextConfig = {
     "/api/export-plan": ["./node_modules/ffmpeg-static/ffmpeg"],
     "/api/render": [
       "./node_modules/ffmpeg-static/ffmpeg",
-      "./node_modules/next/dist/compiled/@vercel/og/noto-sans-v27-latin-regular.ttf"
+      "./public/assets/fonts/**/*.ttf",
+      "./public/assets/kick-logo.png",
+      "./node_modules/@discordapp/twemoji/dist/svg/**/*.svg"
     ]
   }
 };

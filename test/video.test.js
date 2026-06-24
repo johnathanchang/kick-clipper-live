@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import sharp from "sharp";
 
 import {
   CAPTION_POSITIONS,
@@ -20,7 +22,9 @@ import {
   buildJobStatusPatch,
   buildRenderOverlaySvg,
   createRenderMode,
+  createRenderOverlayPngBuffer,
   getKickBrandingRect,
+  getRenderFontAssets,
   normalizeRenderPayload,
 } from "../src/server/render/ffmpegRenderer.js";
 
@@ -308,7 +312,7 @@ test("renderer replaces a plain ffmpeg executable from export plans", () => {
   assert.match(normalized.ffmpegPath, /ffmpeg-static/);
 });
 
-test("renderer keeps caption burn-in enabled when drawtext is supported", () => {
+test("renderer prefers raster image overlay caption burn-in when overlay is supported", () => {
   const mode = createRenderMode({
     drawtextSupported: true,
     overlaySupported: true,
@@ -316,8 +320,8 @@ test("renderer keeps caption burn-in enabled when drawtext is supported", () => 
     captionBurnInSupported: true,
   }, "ffmpeg");
 
-  assert.equal(mode.mode, "caption-burn-in");
-  assert.equal(mode.captionMode, "drawtext");
+  assert.equal(mode.mode, "caption-image-overlay");
+  assert.equal(mode.captionMode, "image-overlay");
   assert.equal(mode.burnCaptions, true);
   assert.deepEqual(mode.warnings, []);
 });
@@ -352,7 +356,7 @@ test("renderer uses image overlay caption burn-in when drawtext is missing", () 
   assert.doesNotMatch(command, /drawtext/);
 });
 
-test("renderer creates SVG caption overlay content for the image overlay mode", () => {
+test("renderer creates text-free SVG primitives and raster PNG overlay content", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -361,24 +365,29 @@ test("renderer creates SVG caption overlay content for the image overlay mode", 
     captionStyle: { background: "white", fontSize: 52 },
     avoidWatermark: true,
   });
+  const fontAssets = getRenderFontAssets();
   const svg = buildCaptionOverlaySvg(plan);
+  const png = await createRenderOverlayPngBuffer(plan);
+  const metadata = await sharp(png).metadata();
 
+  assert.ok(existsSync(fontAssets.caption));
+  assert.ok(existsSync(fontAssets.kickLink));
   assert.match(svg, /<svg/);
   assert.match(svg, /width="1080"/);
   assert.match(svg, /height="1920"/);
-  assert.match(svg, /Caption burned in locally/);
+  assert.doesNotMatch(svg, /<text/);
+  assert.doesNotMatch(svg, /Caption burned in locally/);
   assert.match(svg, /fill="#ffffff"/);
-  assert.match(svg, /rx="22"/);
+  assert.match(svg, /rx="\d+"/);
   assert.match(svg, /filter="url\(#captionBubbleShadow\)"/);
   assert.match(svg, /stdDeviation="12"/);
   assert.match(svg, /flood-opacity="0\.12"/);
-  assert.match(svg, /@font-face/);
-  assert.match(svg, /KickClipperOverlay/);
-  assert.match(svg, /data:font\/ttf;base64/);
-  assert.doesNotMatch(svg, /Arial Rounded MT Bold|Arial Black|Impact|Helvetica/);
+  assert.equal(metadata.width, 1080);
+  assert.equal(metadata.height, 1920);
+  assert.equal(metadata.hasAlpha, true);
 });
 
-test("renderer uses Twemoji image assets for the acceptance caption emojis", () => {
+test("renderer uses Twemoji image assets for the acceptance caption emojis", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -388,12 +397,12 @@ test("renderer uses Twemoji image assets for the acceptance caption emojis", () 
     kickBranding: { enabled: false },
     avoidWatermark: true,
   });
-  const logs = captureConsoleInfo(() => {
-    const svg = buildRenderOverlaySvg(plan);
+  const logs = await captureConsoleInfoAsync(async () => {
+    const png = await createRenderOverlayPngBuffer(plan);
+    const metadata = await sharp(png).metadata();
 
-    assert.match(svg, /data:image\/svg\+xml;base64/);
-    assert.equal(svg.match(/<image href="data:image\/svg\+xml;base64/g)?.length, 6);
-    assert.doesNotMatch(svg, /😂|😭|😤|🔥|💀|🙏/);
+    assert.equal(metadata.width, 1080);
+    assert.equal(metadata.height, 1920);
   });
 
   assert.match(logs, /Found emoji 😂\nUnicode: U\+1F602\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f602\.svg/);
@@ -405,7 +414,7 @@ test("renderer uses Twemoji image assets for the acceptance caption emojis", () 
   assert.doesNotMatch(logs, /Asset lookup failed/);
 });
 
-test("renderer normalizes variation selectors, skin tones, and ZWJ emoji sequences", () => {
+test("renderer normalizes variation selectors, skin tones, and ZWJ emoji sequences", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -415,11 +424,12 @@ test("renderer normalizes variation selectors, skin tones, and ZWJ emoji sequenc
     kickBranding: { enabled: false },
     avoidWatermark: true,
   });
-  const logs = captureConsoleInfo(() => {
-    const svg = buildRenderOverlaySvg(plan);
+  const logs = await captureConsoleInfoAsync(async () => {
+    const png = await createRenderOverlayPngBuffer(plan);
+    const metadata = await sharp(png).metadata();
 
-    assert.equal(svg.match(/<image href="data:image\/svg\+xml;base64/g)?.length, 3);
-    assert.doesNotMatch(svg, /❤️|👋🏽|👨‍👩‍👧‍👦/);
+    assert.equal(metadata.width, 1080);
+    assert.equal(metadata.height, 1920);
   });
 
   assert.match(logs, /Unicode: U\+2764\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/2764\.svg/);
@@ -427,7 +437,7 @@ test("renderer normalizes variation selectors, skin tones, and ZWJ emoji sequenc
   assert.match(logs, /Unicode: U\+1F468 U\+200D U\+1F469 U\+200D U\+1F467 U\+200D U\+1F466\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f468-200d-1f469-200d-1f467-200d-1f466\.svg/);
 });
 
-test("renderer falls back to native emoji text when a parsed Twemoji asset is missing", () => {
+test("renderer renders a bundled-font placeholder when a parsed Twemoji asset is missing", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -439,13 +449,13 @@ test("renderer falls back to native emoji text when a parsed Twemoji asset is mi
   });
   const originalAssetDir = process.env.TWEMOJI_ASSET_DIR;
   process.env.TWEMOJI_ASSET_DIR = "/tmp/kick-clipper-missing-twemoji-assets";
-  const logs = captureConsoleInfo(() => {
+  const logs = await captureConsoleInfoAsync(async () => {
     try {
-      const svg = buildRenderOverlaySvg(plan);
+      const png = await createRenderOverlayPngBuffer(plan);
+      const metadata = await sharp(png).metadata();
 
-      assert.match(svg, /font-family="KickClipperOverlay"/);
-      assert.match(svg, /🙂‍↔️/);
-      assert.doesNotMatch(svg, /data:image\/svg\+xml;base64/);
+      assert.equal(metadata.width, 1080);
+      assert.equal(metadata.height, 1920);
     } finally {
       if (originalAssetDir === undefined) {
         delete process.env.TWEMOJI_ASSET_DIR;
@@ -458,7 +468,7 @@ test("renderer falls back to native emoji text when a parsed Twemoji asset is mi
   assert.match(logs, /Found emoji 🙂‍↔️\nUnicode: U\+1F642 U\+200D U\+2194 U\+FE0F\nAsset lookup failed: 1f642-200d-2194-fe0f\.svg/);
 });
 
-test("renderer includes Kick watermark bar when enabled", () => {
+test("renderer includes Kick watermark bar when enabled", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -468,11 +478,15 @@ test("renderer includes Kick watermark bar when enabled", () => {
     avoidWatermark: true,
   });
   const svg = buildRenderOverlaySvg(plan);
+  const png = await createRenderOverlayPngBuffer(plan);
+  const metadata = await sharp(png).metadata();
 
   assert.equal(plan.kickBranding.enabled, true);
-  assert.match(svg, /KICK\.COM\/CLAVICULAR/);
   assert.match(svg, /data:image\/png;base64/);
-  assert.doesNotMatch(svg, />KICK</);
+  assert.doesNotMatch(svg, /<text/);
+  assert.doesNotMatch(svg, /KICK\.COM\/CLAVICULAR/);
+  assert.equal(metadata.width, 1080);
+  assert.equal(metadata.height, 1920);
 });
 
 test("renderer omits Kick watermark bar when disabled", () => {
@@ -491,7 +505,7 @@ test("renderer omits Kick watermark bar when disabled", () => {
   assert.doesNotMatch(svg, /data:image\/png;base64/);
 });
 
-test("renderer uses custom Kick link text in the watermark bar", () => {
+test("renderer uses custom Kick link text in the watermark bar", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -501,53 +515,14 @@ test("renderer uses custom Kick link text in the watermark bar", () => {
     avoidWatermark: true,
   });
   const svg = buildRenderOverlaySvg(plan);
+  const png = await createRenderOverlayPngBuffer(plan);
+  const metadata = await sharp(png).metadata();
 
   assert.equal(plan.kickBranding.link, "kick.com/adinross");
-  assert.match(svg, /KICK\.COM\/ADINROSS/);
-});
-
-test("renderer uses bundled font for lower-safe caption and Kick link SVG text", () => {
-  const plan = createKickClipExportPlan({
-    source: { width: 720, height: 1280 },
-    sourcePath: "uploads/silky.mp4",
-    outputPath: "renders/silky.mp4",
-    captionText: "Lower heading stays readable 😂",
-    captionPosition: CAPTION_POSITIONS.lowerSafe,
-    kickBranding: { enabled: true, link: "kick.com/clavicular" },
-    avoidWatermark: false,
-  });
-  const svg = buildRenderOverlaySvg(plan);
-  const textTags = svg.match(/<text\b[^>]*>/g) ?? [];
-
-  assert.ok(textTags.length >= 2);
-  assert.match(svg, />Lower heading stays readable /);
-  assert.match(svg, /KICK\.COM\/CLAVICULAR/);
-  assert.match(svg, /font-size="45" font-weight="900"/);
-  assert.deepEqual(
-    textTags.map((tag) => /font-family="KickClipperOverlay"/.test(tag)),
-    textTags.map(() => true),
-  );
-  assert.doesNotMatch(svg, /Arial Rounded MT Bold|Arial Black|Impact|Helvetica|Segoe UI Emoji|Noto Color Emoji|EmojiSymbols/);
-});
-
-test("production overlay SVG path removes text nodes before raster text compositing", () => {
-  const plan = createKickClipExportPlan({
-    source: { width: 720, height: 1280 },
-    sourcePath: "uploads/silky.mp4",
-    outputPath: "renders/silky.mp4",
-    captionText: "Lower heading stays readable",
-    captionPosition: CAPTION_POSITIONS.lowerSafe,
-    kickBranding: { enabled: true, link: "kick.com/clavicular" },
-    avoidWatermark: false,
-  });
-  const debugSvg = buildRenderOverlaySvg(plan);
-  const productionBaseSvg = buildRenderOverlaySvg(plan, { includeText: false });
-
-  assert.match(debugSvg, />Lower heading stays readable</);
-  assert.match(debugSvg, /KICK\.COM\/CLAVICULAR/);
-  assert.equal(productionBaseSvg.match(/<text\b/g), null);
-  assert.match(productionBaseSvg, /data:image\/png;base64/);
-  assert.match(productionBaseSvg, /<image\b/);
+  assert.doesNotMatch(svg, /<text/);
+  assert.doesNotMatch(svg, /KICK\.COM\/ADINROSS/);
+  assert.equal(metadata.width, 1080);
+  assert.equal(metadata.height, 1920);
 });
 
 test("Kick watermark bar does not overlap lower-safe captions", () => {
@@ -612,7 +587,7 @@ test("renderer builds job status patches for processing, complete, and failed st
   assert.match(failed.completed_at, /^\d{4}-\d{2}-\d{2}T/);
 });
 
-function captureConsoleInfo(callback) {
+async function captureConsoleInfoAsync(callback) {
   const originalInfo = console.info;
   const messages = [];
 
@@ -621,7 +596,7 @@ function captureConsoleInfo(callback) {
   };
 
   try {
-    callback();
+    await callback();
   } finally {
     console.info = originalInfo;
   }
