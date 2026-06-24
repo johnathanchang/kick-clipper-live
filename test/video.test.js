@@ -368,7 +368,7 @@ test("renderer creates SVG caption overlay content for the image overlay mode", 
   assert.match(svg, /height="1920"/);
   assert.match(svg, /Caption burned in locally/);
   assert.match(svg, /fill="#ffffff"/);
-  assert.match(svg, /rx="30"/);
+  assert.match(svg, /rx="24"/);
   assert.match(svg, /filter="url\(#captionBubbleShadow\)"/);
   assert.match(svg, /stdDeviation="12"/);
   assert.match(svg, /flood-opacity="0\.12"/);
@@ -523,6 +523,7 @@ test("renderer uses bundled font for lower-safe caption and Kick link SVG text",
   assert.match(svg, />Lower heading stays</);
   assert.match(svg, />readable /);
   assert.match(svg, /KICK\.COM\/CLAVICULAR/);
+  assert.match(svg, /font-size="39" font-weight="900"/);
   assert.deepEqual(
     textTags.map((tag) => /font-family="KickClipperOverlay"/.test(tag)),
     textTags.map(() => true),

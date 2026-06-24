@@ -32,6 +32,8 @@ const EMOJI_ADVANCE_RATIO = 1.13;
 const EMOJI_LEADING_GAP_RATIO = EMOJI_ADVANCE_RATIO - EMOJI_SIZE_RATIO;
 const DEFAULT_FFMPEG_PATH = getPackagedFfmpegPath();
 const assetDataUriCache = new Map();
+const CAPTION_FONT_DESC = "Noto Sans";
+const CAPTION_BOLD_FONT_DESC = "Noto Sans Bold";
 
 export class RenderValidationError extends Error {
   constructor(message, details) {
@@ -317,17 +319,23 @@ function createCaptionLayout(normalized) {
   const rect = normalized.captionRect;
   const target = normalized.target;
   const style = normalizeCaptionStyle(normalized.captionStyle);
-  const fontSize = Math.round(style.fontSize ?? 64);
+  const isLowerCaption = isLowerCaptionRect(rect, target);
+  const fontSize = Math.round((style.fontSize ?? 64) * (isLowerCaption ? 0.82 : 1));
+  const textWidthScale = isLowerCaption ? 1.35 : 1;
   const edgeMargin = 48;
-  const paddingX = Math.max(52, Math.round(fontSize * 0.72));
-  const paddingY = Math.max(20, Math.round(fontSize * 0.32));
+  const paddingX = isLowerCaption
+    ? Math.max(34, Math.round(fontSize * 0.52))
+    : Math.max(52, Math.round(fontSize * 0.72));
+  const paddingY = isLowerCaption
+    ? Math.max(20, Math.round(fontSize * 0.3))
+    : Math.max(20, Math.round(fontSize * 0.32));
   const maxBoxWidth = Math.min(rect.width, target.width - 2 * edgeMargin);
   const textWrapWidth = Math.max(fontSize * 3, maxBoxWidth - 2 * paddingX);
   logCaptionEmojiAssets(normalized.captionText);
-  const lines = wrapCaptionText(normalized.captionText, textWrapWidth, fontSize);
-  const lineHeight = Math.round(fontSize * 1.16);
+  const lines = wrapCaptionText(normalized.captionText, textWrapWidth, fontSize, textWidthScale);
+  const lineHeight = Math.round(fontSize * (isLowerCaption ? 1.1 : 1.16));
   const blockHeight = Math.max(lineHeight, lines.length * lineHeight);
-  const estimatedLineWidths = lines.map((line) => estimateTextWidth(line, fontSize));
+  const estimatedLineWidths = lines.map((line) => estimateTextWidth(line, fontSize) * textWidthScale);
   const textWidth = Math.min(textWrapWidth, Math.max(...estimatedLineWidths, 1));
   const boxWidth = Math.min(maxBoxWidth, textWidth + 2 * paddingX);
   const boxHeight = Math.min(target.height - 2 * edgeMargin, blockHeight + 2 * paddingY);
@@ -354,11 +362,13 @@ function createCaptionLayout(normalized) {
     boxX,
     boxY,
     fontSize,
+    isLowerCaption,
     lineHeight,
     lines,
     style,
     textColor,
     textRect,
+    textWidthScale,
   };
 }
 
@@ -372,11 +382,13 @@ function buildCaptionSvgLayer(normalized, options = {}) {
     boxX,
     boxY,
     fontSize,
+    isLowerCaption,
     lineHeight,
     lines,
     style,
     textColor,
     textRect,
+    textWidthScale,
   } = createCaptionLayout(normalized);
   const includeText = options.includeText !== false;
   const textShadow = style.background === "none"
@@ -385,17 +397,18 @@ function buildCaptionSvgLayer(normalized, options = {}) {
           includeText,
           opacity: 0.9,
           offsetY: 4,
+          textWidthScale,
         }),
       ].join("")
     : "";
   const background = style.background === "none"
     ? ""
-    : `<rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="${boxHeight}" rx="30" ry="30" fill="${backgroundColor}" opacity="${backgroundOpacity}" filter="url(#captionBubbleShadow)" />`;
+    : `<rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="${boxHeight}" rx="${isLowerCaption ? 24 : 30}" ry="${isLowerCaption ? 24 : 30}" fill="${backgroundColor}" opacity="${backgroundOpacity}" filter="url(#captionBubbleShadow)" />`;
 
   return [
     background,
     textShadow,
-    svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, textColor, { includeText }),
+    svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, textColor, { includeText, textWidthScale }),
   ].join("");
 }
 
@@ -403,11 +416,11 @@ function createKickBrandingLayout(normalized, kickBranding) {
   const rect = getKickBrandingRect(normalized);
   const logoWidth = Math.round(rect.width * 0.22);
   const logoHeight = Math.round(rect.height * 0.68);
-  const linkFontSize = Math.round(rect.height * 0.3);
+  const linkFontSize = Math.round(rect.height * 0.36);
   const centerY = rect.y + rect.height / 2;
   const logoX = Math.round(rect.x + rect.width * 0.065);
   const logoY = Math.round(centerY - logoHeight / 2);
-  const linkX = Math.round(logoX + logoWidth + rect.width * 0.055);
+  const linkX = Math.round(logoX + logoWidth + rect.width * 0.048);
   const logoDataUri = assetDataUri(KICK_LOGO_PATH, "image/png");
   const linkText = kickBranding.link.toUpperCase();
 
@@ -444,7 +457,7 @@ function buildKickBrandingSvgLayer(normalized, kickBranding, options = {}) {
     `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="#030303" opacity="0.9" />`,
     `<image href="${logoDataUri}" x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" preserveAspectRatio="xMidYMid slice" />`,
     includeText
-      ? `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="400" text-anchor="start">${escapeXml(linkText)}</text>`
+      ? `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="900" text-anchor="start">${escapeXml(linkText)}</text>`
       : "",
   ].join("");
 }
@@ -538,7 +551,11 @@ function normalizeKickLink(value) {
     .replace(/\/+$/g, "");
 }
 
-function wrapCaptionText(text, maxWidth, fontSize) {
+function isLowerCaptionRect(rect, target) {
+  return rect.y + rect.height / 2 >= target.height * 0.5;
+}
+
+function wrapCaptionText(text, maxWidth, fontSize, textWidthScale = 1) {
   const words = String(text)
     .replace(/\s+/g, " ")
     .trim()
@@ -550,7 +567,7 @@ function wrapCaptionText(text, maxWidth, fontSize) {
   for (const word of words) {
     const nextLine = currentLine ? `${currentLine} ${word}` : word;
 
-    if (currentLine && estimateTextWidth(nextLine, fontSize) > maxWidth) {
+    if (currentLine && estimateTextWidth(nextLine, fontSize) * textWidthScale > maxWidth) {
       lines.push(currentLine);
       currentLine = word;
     } else {
@@ -582,10 +599,11 @@ function estimateTextWidth(text, fontSize) {
 
 function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = {}) {
   const includeText = options.includeText !== false;
+  const textWidthScale = options.textWidthScale ?? 1;
 
   return lines
     .map((line, index) => {
-      const lineWidth = estimateTextWidth(line, fontSize);
+      const lineWidth = estimateTextWidth(line, fontSize) * textWidthScale;
       const baselineY = Math.round(y + fontSize + index * lineHeight + (options.offsetY ?? 0));
       let cursorX = Math.round(rect.x + (rect.width - lineWidth) / 2);
 
@@ -604,11 +622,11 @@ function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = 
           }
 
           if (!includeText) {
-            cursorX += estimateTextWidth(token.value, fontSize);
+            cursorX += estimateTextWidth(token.value, fontSize) * textWidthScale;
             return "";
           }
 
-          const width = estimateTextWidth(token.value, fontSize);
+          const width = estimateTextWidth(token.value, fontSize) * textWidthScale;
           const text = [
             `<text x="${cursorX}" y="${baselineY}" fill="${fill}"`,
             `font-family="${OVERLAY_FONT_FAMILY}"`,
@@ -670,25 +688,28 @@ async function buildOverlayTextComposites(normalized) {
 }
 
 async function buildCaptionTextComposites(normalized) {
-  const { blockY, fontSize, lineHeight, lines, textColor, textRect } = createCaptionLayout(normalized);
+  const { blockY, fontSize, isLowerCaption, lineHeight, lines, textColor, textRect, textWidthScale } = createCaptionLayout(normalized);
   const composites = [];
+  const renderFontSize = Math.round(fontSize * (isLowerCaption ? 0.72 : 0.72));
 
   for (const [index, line] of lines.entries()) {
-    const lineWidth = estimateTextWidth(line, fontSize);
+    const lineWidth = estimateTextWidth(line, fontSize) * textWidthScale;
     const baselineY = Math.round(blockY + fontSize + index * lineHeight);
     let cursorX = Math.round(textRect.x + (textRect.width - lineWidth) / 2);
 
     for (const token of tokenizeCaptionLine(line)) {
-      const width = estimateTextWidth(token.value, fontSize);
+      const width = estimateTextWidth(token.value, fontSize) * (token.type === "emoji" ? 1 : textWidthScale);
 
       if (token.type !== "emoji") {
         composites.push(await createTextComposite({
           baselineY,
           fill: textColor,
+          fontDesc: isLowerCaption ? CAPTION_BOLD_FONT_DESC : CAPTION_FONT_DESC,
           fontSize,
           left: cursorX,
-          renderFontSize: Math.round(fontSize * 0.72),
+          renderFontSize,
           text: token.value,
+          topOffset: isLowerCaption ? -6 : 0,
           width,
         }));
       }
@@ -704,35 +725,66 @@ async function buildCaptionTextComposites(normalized) {
 
 async function buildKickLinkTextComposite(normalized, kickBranding) {
   const { centerY, linkFontSize, linkText, linkX } = createKickBrandingLayout(normalized, kickBranding);
+  const renderFontSize = Math.round(linkFontSize * 1.04);
+  const textHeight = Math.ceil(renderFontSize * 1.42);
 
   return createTextComposite({
     baselineY: Math.round(centerY + linkFontSize * 0.34),
     fill: "#ffffff",
+    fontDesc: CAPTION_BOLD_FONT_DESC,
     fontSize: linkFontSize,
+    heightRatio: 1.42,
     left: linkX,
+    renderFontSize,
+    stretchX: 0.82,
     text: linkText,
+    top: Math.round(centerY - textHeight / 2),
     width: estimateTextWidth(linkText, linkFontSize),
   });
 }
 
-async function createTextComposite({ baselineY, fill, fontSize, left, renderFontSize, text, width }) {
+async function createTextComposite({
+  baselineY,
+  fill,
+  fontDesc = CAPTION_FONT_DESC,
+  fontSize,
+  heightRatio = 1.8,
+  left,
+  renderFontSize,
+  stretchX = 1,
+  text,
+  top,
+  topOffset = 0,
+  width,
+}) {
   const rasterFontSize = renderFontSize ?? fontSize;
-  const textWidth = Math.max(8, Math.ceil(width + rasterFontSize * 2));
-  const textHeight = Math.max(8, Math.ceil(rasterFontSize * 1.8));
-  const top = Math.round(baselineY - rasterFontSize * 1.05);
-  const input = await renderTextPng(text, rasterFontSize, fill, textWidth, textHeight);
+  const textWidth = Math.max(8, Math.ceil(width + rasterFontSize * 2.2));
+  const textHeight = Math.max(8, Math.ceil(rasterFontSize * heightRatio));
+  const textTop = top ?? Math.round(baselineY - rasterFontSize * 1.05 + topOffset);
+  let input = await renderTextPng(text, rasterFontSize, fill, textWidth, textHeight, fontDesc);
+
+  if (stretchX !== 1) {
+    input = await sharp(input)
+      .resize({
+        width: Math.max(1, Math.round(textWidth * stretchX)),
+        height: textHeight,
+        fit: "fill",
+      })
+      .png()
+      .toBuffer();
+  }
 
   return {
     input,
     left: Math.round(left),
-    top,
+    top: textTop,
   };
 }
 
-async function renderTextPng(text, fontSize, fill, width, height) {
+async function renderTextPng(text, fontSize, fill, width, height, fontDesc = CAPTION_FONT_DESC) {
   return sharp({
     text: {
-      text: `<span font_desc="Noto Sans ${fontSize}" foreground="${escapePangoAttribute(fill)}">${escapePangoText(text)}</span>`,
+      text: `<span font_desc="${escapePangoAttribute(`${fontDesc} ${fontSize}`)}" foreground="${escapePangoAttribute(fill)}">${escapePangoText(text)}</span>`,
       font: "Noto Sans",
       fontfile: OVERLAY_FONT_PATH,
       height,
