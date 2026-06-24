@@ -15,6 +15,17 @@ const DEFAULT_TWEMOJI_ASSET_DIR = path.join(
   "svg",
 );
 const KICK_LOGO_PATH = path.join(PUBLIC_ASSETS_DIR, "kick-logo.png");
+const OVERLAY_FONT_PATH = path.join(
+  process.cwd(),
+  "node_modules",
+  "next",
+  "dist",
+  "compiled",
+  "@vercel",
+  "og",
+  "noto-sans-v27-latin-regular.ttf",
+);
+const OVERLAY_FONT_FAMILY = "KickClipperOverlay";
 const EMOJI_FONT_FAMILY = "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, EmojiSymbols, sans-serif";
 const EMOJI_SIZE_RATIO = 1.05;
 const EMOJI_ADVANCE_RATIO = 1.13;
@@ -272,7 +283,7 @@ export function buildRenderOverlaySvg(payload) {
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${target.width}" height="${target.height}" viewBox="0 0 ${target.width} ${target.height}">`,
-    `<defs><filter id="captionBubbleShadow" x="-20%" y="-60%" width="140%" height="220%"><feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#000000" flood-opacity="0.12"/></filter></defs>`,
+    `<defs>${overlayFontFaceCss()}<filter id="captionBubbleShadow" x="-20%" y="-60%" width="140%" height="220%"><feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#000000" flood-opacity="0.12"/></filter></defs>`,
     `<rect width="100%" height="100%" fill="transparent" />`,
     buildCaptionSvgLayer(normalized),
     kickBranding.enabled ? buildKickBrandingSvgLayer(normalized, kickBranding) : "",
@@ -362,7 +373,7 @@ function buildKickBrandingSvgLayer(normalized, kickBranding) {
   return [
     `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="#030303" opacity="0.9" />`,
     `<image href="${logoDataUri}" x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" preserveAspectRatio="xMidYMid slice" />`,
-    `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="Arial Black, Impact, Helvetica, sans-serif" font-size="${linkFontSize}" font-weight="900" text-anchor="start">${escapeXml(kickBranding.link.toUpperCase())}</text>`,
+    `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="700" text-anchor="start">${escapeXml(kickBranding.link.toUpperCase())}</text>`,
   ].join("");
 }
 
@@ -521,8 +532,8 @@ function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = 
           const width = estimateTextWidth(token.value, fontSize);
           const text = [
             `<text x="${cursorX}" y="${baselineY}" fill="${fill}"`,
-            `font-family="Arial Rounded MT Bold, Arial Black, Impact, Helvetica, sans-serif"`,
-            `font-size="${fontSize}" font-weight="900" text-anchor="start"`,
+            `font-family="${OVERLAY_FONT_FAMILY}"`,
+            `font-size="${fontSize}" font-weight="700" text-anchor="start"`,
             options.opacity ? `opacity="${options.opacity}"` : "",
             `>${escapeXml(token.value)}</text>`,
           ].filter(Boolean).join(" ");
@@ -553,6 +564,19 @@ function tokenizeCaptionLine(line) {
   }
 
   return tokens.filter((token) => token.value);
+}
+
+function overlayFontFaceCss() {
+  return [
+    "<style>",
+    "@font-face{",
+    `font-family:'${OVERLAY_FONT_FAMILY}';`,
+    `src:url('${assetDataUri(OVERLAY_FONT_PATH, "font/ttf")}') format('truetype');`,
+    "font-weight:400 900;",
+    "font-style:normal;",
+    "}",
+    "</style>",
+  ].join("");
 }
 
 function parseCaptionEmojiTokens(text) {

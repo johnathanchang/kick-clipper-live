@@ -9,7 +9,10 @@ const nextConfig = {
   serverExternalPackages: ["ffmpeg-static"],
   outputFileTracingIncludes: {
     "/api/export-plan": ["./node_modules/ffmpeg-static/ffmpeg"],
-    "/api/render": ["./node_modules/ffmpeg-static/ffmpeg"]
+    "/api/render": [
+      "./node_modules/ffmpeg-static/ffmpeg",
+      "./node_modules/next/dist/compiled/@vercel/og/noto-sans-v27-latin-regular.ttf"
+    ]
   }
 };
 

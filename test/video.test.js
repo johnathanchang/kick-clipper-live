@@ -372,6 +372,10 @@ test("renderer creates SVG caption overlay content for the image overlay mode", 
   assert.match(svg, /filter="url\(#captionBubbleShadow\)"/);
   assert.match(svg, /stdDeviation="12"/);
   assert.match(svg, /flood-opacity="0\.12"/);
+  assert.match(svg, /@font-face/);
+  assert.match(svg, /KickClipperOverlay/);
+  assert.match(svg, /data:font\/ttf;base64/);
+  assert.doesNotMatch(svg, /Arial Rounded MT Bold|Arial Black|Impact|Helvetica/);
 });
 
 test("renderer uses Twemoji image assets for the acceptance caption emojis", () => {
