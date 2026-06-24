@@ -320,20 +320,23 @@ function createCaptionLayout(normalized) {
   const target = normalized.target;
   const style = normalizeCaptionStyle(normalized.captionStyle);
   const isLowerCaption = isLowerCaptionRect(rect, target);
-  const fontSize = Math.round((style.fontSize ?? 64) * (isLowerCaption ? 0.82 : 1));
-  const textWidthScale = isLowerCaption ? 1.35 : 1;
+  const fontSize = Math.round((style.fontSize ?? 64) * (isLowerCaption ? 0.58 : 1));
+  const textWidthScale = isLowerCaption ? 1.25 : 1.06;
+  const wrapTextWidthScale = isLowerCaption ? 0.82 : textWidthScale;
   const edgeMargin = 48;
   const paddingX = isLowerCaption
-    ? Math.max(34, Math.round(fontSize * 0.52))
+    ? Math.max(44, Math.round(fontSize * 0.62))
     : Math.max(52, Math.round(fontSize * 0.72));
   const paddingY = isLowerCaption
-    ? Math.max(20, Math.round(fontSize * 0.3))
+    ? Math.max(22, Math.round(fontSize * 0.34))
     : Math.max(20, Math.round(fontSize * 0.32));
-  const maxBoxWidth = Math.min(rect.width, target.width - 2 * edgeMargin);
+  const maxBoxWidth = isLowerCaption
+    ? target.width - 2 * Math.round(target.width * 0.04)
+    : Math.min(rect.width, target.width - 2 * edgeMargin);
   const textWrapWidth = Math.max(fontSize * 3, maxBoxWidth - 2 * paddingX);
   logCaptionEmojiAssets(normalized.captionText);
-  const lines = wrapCaptionText(normalized.captionText, textWrapWidth, fontSize, textWidthScale);
-  const lineHeight = Math.round(fontSize * (isLowerCaption ? 1.1 : 1.16));
+  const lines = wrapCaptionText(normalized.captionText, textWrapWidth, fontSize, wrapTextWidthScale);
+  const lineHeight = Math.round(fontSize * (isLowerCaption ? 1.04 : 1.12));
   const blockHeight = Math.max(lineHeight, lines.length * lineHeight);
   const estimatedLineWidths = lines.map((line) => estimateTextWidth(line, fontSize) * textWidthScale);
   const textWidth = Math.min(textWrapWidth, Math.max(...estimatedLineWidths, 1));
@@ -397,18 +400,23 @@ function buildCaptionSvgLayer(normalized, options = {}) {
           includeText,
           opacity: 0.9,
           offsetY: 4,
+          offsetX: 0,
           textWidthScale,
         }),
       ].join("")
     : "";
   const background = style.background === "none"
     ? ""
-    : `<rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="${boxHeight}" rx="${isLowerCaption ? 24 : 30}" ry="${isLowerCaption ? 24 : 30}" fill="${backgroundColor}" opacity="${backgroundOpacity}" filter="url(#captionBubbleShadow)" />`;
+    : `<rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="${boxHeight}" rx="22" ry="22" fill="${backgroundColor}" opacity="${backgroundOpacity}" filter="url(#captionBubbleShadow)" />`;
 
   return [
     background,
     textShadow,
-    svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, textColor, { includeText, textWidthScale }),
+    svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, textColor, {
+      includeText,
+      offsetX: 0,
+      textWidthScale,
+    }),
   ].join("");
 }
 
@@ -416,11 +424,11 @@ function createKickBrandingLayout(normalized, kickBranding) {
   const rect = getKickBrandingRect(normalized);
   const logoWidth = Math.round(rect.width * 0.22);
   const logoHeight = Math.round(rect.height * 0.68);
-  const linkFontSize = Math.round(rect.height * 0.36);
+  const linkFontSize = Math.round(rect.height * 0.42);
   const centerY = rect.y + rect.height / 2;
   const logoX = Math.round(rect.x + rect.width * 0.065);
   const logoY = Math.round(centerY - logoHeight / 2);
-  const linkX = Math.round(logoX + logoWidth + rect.width * 0.048);
+  const linkX = Math.round(logoX + logoWidth + rect.width * 0.04);
   const logoDataUri = assetDataUri(KICK_LOGO_PATH, "image/png");
   const linkText = kickBranding.link.toUpperCase();
 
@@ -605,7 +613,7 @@ function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = 
     .map((line, index) => {
       const lineWidth = estimateTextWidth(line, fontSize) * textWidthScale;
       const baselineY = Math.round(y + fontSize + index * lineHeight + (options.offsetY ?? 0));
-      let cursorX = Math.round(rect.x + (rect.width - lineWidth) / 2);
+      let cursorX = Math.round(rect.x + (rect.width - lineWidth) / 2 + (options.offsetX ?? 0));
 
       return tokenizeCaptionLine(line)
         .map((token) => {
@@ -690,7 +698,7 @@ async function buildOverlayTextComposites(normalized) {
 async function buildCaptionTextComposites(normalized) {
   const { blockY, fontSize, isLowerCaption, lineHeight, lines, textColor, textRect, textWidthScale } = createCaptionLayout(normalized);
   const composites = [];
-  const renderFontSize = Math.round(fontSize * (isLowerCaption ? 0.72 : 0.72));
+  const renderFontSize = Math.round(fontSize * (isLowerCaption ? 0.8 : 0.78));
 
   for (const [index, line] of lines.entries()) {
     const lineWidth = estimateTextWidth(line, fontSize) * textWidthScale;
@@ -703,13 +711,14 @@ async function buildCaptionTextComposites(normalized) {
       if (token.type !== "emoji") {
         composites.push(await createTextComposite({
           baselineY,
+          embolden: 1,
           fill: textColor,
-          fontDesc: isLowerCaption ? CAPTION_BOLD_FONT_DESC : CAPTION_FONT_DESC,
+          fontDesc: CAPTION_BOLD_FONT_DESC,
           fontSize,
           left: cursorX,
           renderFontSize,
           text: token.value,
-          topOffset: isLowerCaption ? -6 : 0,
+          topOffset: isLowerCaption ? -2 : -1,
           width,
         }));
       }
@@ -725,18 +734,19 @@ async function buildCaptionTextComposites(normalized) {
 
 async function buildKickLinkTextComposite(normalized, kickBranding) {
   const { centerY, linkFontSize, linkText, linkX } = createKickBrandingLayout(normalized, kickBranding);
-  const renderFontSize = Math.round(linkFontSize * 1.04);
-  const textHeight = Math.ceil(renderFontSize * 1.42);
+  const renderFontSize = Math.round(linkFontSize * 1.08);
+  const textHeight = Math.ceil(renderFontSize * 1.36);
 
   return createTextComposite({
     baselineY: Math.round(centerY + linkFontSize * 0.34),
+    embolden: 2,
     fill: "#ffffff",
     fontDesc: CAPTION_BOLD_FONT_DESC,
     fontSize: linkFontSize,
-    heightRatio: 1.42,
+    heightRatio: 1.36,
     left: linkX,
     renderFontSize,
-    stretchX: 0.82,
+    stretchX: 0.68,
     text: linkText,
     top: Math.round(centerY - textHeight / 2),
     width: estimateTextWidth(linkText, linkFontSize),
@@ -745,6 +755,7 @@ async function buildKickLinkTextComposite(normalized, kickBranding) {
 
 async function createTextComposite({
   baselineY,
+  embolden = 0,
   fill,
   fontDesc = CAPTION_FONT_DESC,
   fontSize,
@@ -758,10 +769,14 @@ async function createTextComposite({
   width,
 }) {
   const rasterFontSize = renderFontSize ?? fontSize;
-  const textWidth = Math.max(8, Math.ceil(width + rasterFontSize * 2.2));
+  const textWidth = Math.max(8, Math.ceil(width + rasterFontSize * 3));
   const textHeight = Math.max(8, Math.ceil(rasterFontSize * heightRatio));
   const textTop = top ?? Math.round(baselineY - rasterFontSize * 1.05 + topOffset);
   let input = await renderTextPng(text, rasterFontSize, fill, textWidth, textHeight, fontDesc);
+
+  if (embolden > 0) {
+    input = await emboldenTextPng(input, textWidth, textHeight, embolden);
+  }
 
   if (stretchX !== 1) {
     input = await sharp(input)
@@ -779,6 +794,36 @@ async function createTextComposite({
     left: Math.round(left),
     top: textTop,
   };
+}
+
+async function emboldenTextPng(input, width, height, strength) {
+  const offsets = [
+    { left: 0, top: 0 },
+    { left: 1, top: 0 },
+    { left: 0, top: 1 },
+    { left: 1, top: 1 },
+  ];
+
+  if (strength > 1) {
+    offsets.push(
+      { left: 2, top: 0 },
+      { left: 0, top: 2 },
+      { left: 2, top: 1 },
+      { left: 1, top: 2 },
+    );
+  }
+
+  return sharp({
+    create: {
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      channels: 4,
+      height,
+      width,
+    },
+  })
+    .composite(offsets.map((offset) => ({ input, ...offset })))
+    .png()
+    .toBuffer();
 }
 
 async function renderTextPng(text, fontSize, fill, width, height, fontDesc = CAPTION_FONT_DESC) {

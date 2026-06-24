@@ -368,7 +368,7 @@ test("renderer creates SVG caption overlay content for the image overlay mode", 
   assert.match(svg, /height="1920"/);
   assert.match(svg, /Caption burned in locally/);
   assert.match(svg, /fill="#ffffff"/);
-  assert.match(svg, /rx="24"/);
+  assert.match(svg, /rx="22"/);
   assert.match(svg, /filter="url\(#captionBubbleShadow\)"/);
   assert.match(svg, /stdDeviation="12"/);
   assert.match(svg, /flood-opacity="0\.12"/);
@@ -520,10 +520,9 @@ test("renderer uses bundled font for lower-safe caption and Kick link SVG text",
   const textTags = svg.match(/<text\b[^>]*>/g) ?? [];
 
   assert.ok(textTags.length >= 2);
-  assert.match(svg, />Lower heading stays</);
-  assert.match(svg, />readable /);
+  assert.match(svg, />Lower heading stays readable /);
   assert.match(svg, /KICK\.COM\/CLAVICULAR/);
-  assert.match(svg, /font-size="39" font-weight="900"/);
+  assert.match(svg, /font-size="45" font-weight="900"/);
   assert.deepEqual(
     textTags.map((tag) => /font-family="KickClipperOverlay"/.test(tag)),
     textTags.map(() => true),
@@ -544,7 +543,7 @@ test("production overlay SVG path removes text nodes before raster text composit
   const debugSvg = buildRenderOverlaySvg(plan);
   const productionBaseSvg = buildRenderOverlaySvg(plan, { includeText: false });
 
-  assert.match(debugSvg, />Lower heading stays</);
+  assert.match(debugSvg, />Lower heading stays readable</);
   assert.match(debugSvg, /KICK\.COM\/CLAVICULAR/);
   assert.equal(productionBaseSvg.match(/<text\b/g), null);
   assert.match(productionBaseSvg, /data:image\/png;base64/);
