@@ -511,7 +511,7 @@ test("renderer uses bundled font for lower-safe caption and Kick link SVG text",
     source: { width: 720, height: 1280 },
     sourcePath: "uploads/silky.mp4",
     outputPath: "renders/silky.mp4",
-    captionText: "Lower heading stays readable",
+    captionText: "Lower heading stays readable 😂",
     captionPosition: CAPTION_POSITIONS.lowerSafe,
     kickBranding: { enabled: true, link: "kick.com/clavicular" },
     avoidWatermark: false,
@@ -521,13 +521,33 @@ test("renderer uses bundled font for lower-safe caption and Kick link SVG text",
 
   assert.ok(textTags.length >= 2);
   assert.match(svg, />Lower heading stays</);
-  assert.match(svg, />readable</);
+  assert.match(svg, />readable /);
   assert.match(svg, /KICK\.COM\/CLAVICULAR/);
   assert.deepEqual(
     textTags.map((tag) => /font-family="KickClipperOverlay"/.test(tag)),
     textTags.map(() => true),
   );
   assert.doesNotMatch(svg, /Arial Rounded MT Bold|Arial Black|Impact|Helvetica|Segoe UI Emoji|Noto Color Emoji|EmojiSymbols/);
+});
+
+test("production overlay SVG path removes text nodes before raster text compositing", () => {
+  const plan = createKickClipExportPlan({
+    source: { width: 720, height: 1280 },
+    sourcePath: "uploads/silky.mp4",
+    outputPath: "renders/silky.mp4",
+    captionText: "Lower heading stays readable",
+    captionPosition: CAPTION_POSITIONS.lowerSafe,
+    kickBranding: { enabled: true, link: "kick.com/clavicular" },
+    avoidWatermark: false,
+  });
+  const debugSvg = buildRenderOverlaySvg(plan);
+  const productionBaseSvg = buildRenderOverlaySvg(plan, { includeText: false });
+
+  assert.match(debugSvg, />Lower heading stays</);
+  assert.match(debugSvg, /KICK\.COM\/CLAVICULAR/);
+  assert.equal(productionBaseSvg.match(/<text\b/g), null);
+  assert.match(productionBaseSvg, /data:image\/png;base64/);
+  assert.match(productionBaseSvg, /<image\b/);
 });
 
 test("Kick watermark bar does not overlap lower-safe captions", () => {

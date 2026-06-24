@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { writeFile as fsWriteFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { parse as parseTwemoji } from "@twemoji/parser";
@@ -218,9 +219,12 @@ export function createCaptionBurnInUnavailableMessage(ffmpegPath = DEFAULT_FFMPE
 
 export async function createCaptionOverlayPng(payload, outputPath) {
   const normalized = normalizeRenderPayload(payload);
-  const svg = buildRenderOverlaySvg(normalized);
+  const svg = buildRenderOverlaySvg(normalized, { includeText: false });
+  const basePng = await sharp(Buffer.from(svg)).png().toBuffer();
+  const textComposites = await buildOverlayTextComposites(normalized);
 
-  await sharp(Buffer.from(svg)).png().toFile(outputPath);
+  await maybeWriteOverlayDebugArtifacts(outputPath, svg);
+  await sharp(basePng).composite(textComposites).png().toFile(outputPath);
 
   return outputPath;
 }
@@ -275,17 +279,18 @@ export function buildCaptionOverlaySvg(payload) {
   return buildRenderOverlaySvg(payload);
 }
 
-export function buildRenderOverlaySvg(payload) {
+export function buildRenderOverlaySvg(payload, options = {}) {
   const normalized = normalizeRenderPayload(payload);
   const target = normalized.target;
   const kickBranding = normalizeKickBranding(normalized.kickBranding);
+  const includeText = options.includeText !== false;
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${target.width}" height="${target.height}" viewBox="0 0 ${target.width} ${target.height}">`,
     `<defs>${overlayFontFaceCss()}<filter id="captionBubbleShadow" x="-20%" y="-60%" width="140%" height="220%"><feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#000000" flood-opacity="0.12"/></filter></defs>`,
     `<rect width="100%" height="100%" fill="transparent" />`,
-    buildCaptionSvgLayer(normalized),
-    kickBranding.enabled ? buildKickBrandingSvgLayer(normalized, kickBranding) : "",
+    buildCaptionSvgLayer(normalized, { includeText }),
+    kickBranding.enabled ? buildKickBrandingSvgLayer(normalized, kickBranding, { includeText }) : "",
     "</svg>",
   ].join("");
 }
@@ -308,7 +313,7 @@ export function getKickBrandingRect(payload) {
   };
 }
 
-function buildCaptionSvgLayer(normalized) {
+function createCaptionLayout(normalized) {
   const rect = normalized.captionRect;
   const target = normalized.target;
   const style = normalizeCaptionStyle(normalized.captionStyle);
@@ -339,9 +344,45 @@ function buildCaptionSvgLayer(normalized) {
   const textColor = svgColor(style.textColor);
   const backgroundColor = style.background === "black" ? "#050505" : "#ffffff";
   const backgroundOpacity = style.background === "black" ? "0.86" : "0.98";
+
+  return {
+    backgroundColor,
+    backgroundOpacity,
+    blockY,
+    boxHeight,
+    boxWidth,
+    boxX,
+    boxY,
+    fontSize,
+    lineHeight,
+    lines,
+    style,
+    textColor,
+    textRect,
+  };
+}
+
+function buildCaptionSvgLayer(normalized, options = {}) {
+  const {
+    backgroundColor,
+    backgroundOpacity,
+    blockY,
+    boxHeight,
+    boxWidth,
+    boxX,
+    boxY,
+    fontSize,
+    lineHeight,
+    lines,
+    style,
+    textColor,
+    textRect,
+  } = createCaptionLayout(normalized);
+  const includeText = options.includeText !== false;
   const textShadow = style.background === "none"
     ? [
         svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, "#000000", {
+          includeText,
           opacity: 0.9,
           offsetY: 4,
         }),
@@ -354,11 +395,11 @@ function buildCaptionSvgLayer(normalized) {
   return [
     background,
     textShadow,
-    svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, textColor),
+    svgRichTextLines(lines, lineHeight, textRect, blockY, fontSize, textColor, { includeText }),
   ].join("");
 }
 
-function buildKickBrandingSvgLayer(normalized, kickBranding) {
+function createKickBrandingLayout(normalized, kickBranding) {
   const rect = getKickBrandingRect(normalized);
   const logoWidth = Math.round(rect.width * 0.22);
   const logoHeight = Math.round(rect.height * 0.68);
@@ -368,11 +409,43 @@ function buildKickBrandingSvgLayer(normalized, kickBranding) {
   const logoY = Math.round(centerY - logoHeight / 2);
   const linkX = Math.round(logoX + logoWidth + rect.width * 0.055);
   const logoDataUri = assetDataUri(KICK_LOGO_PATH, "image/png");
+  const linkText = kickBranding.link.toUpperCase();
+
+  return {
+    centerY,
+    linkFontSize,
+    linkText,
+    linkX,
+    logoDataUri,
+    logoHeight,
+    logoWidth,
+    logoX,
+    logoY,
+    rect,
+  };
+}
+
+function buildKickBrandingSvgLayer(normalized, kickBranding, options = {}) {
+  const {
+    centerY,
+    linkFontSize,
+    linkText,
+    linkX,
+    logoDataUri,
+    logoHeight,
+    logoWidth,
+    logoX,
+    logoY,
+    rect,
+  } = createKickBrandingLayout(normalized, kickBranding);
+  const includeText = options.includeText !== false;
 
   return [
     `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="#030303" opacity="0.9" />`,
     `<image href="${logoDataUri}" x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" preserveAspectRatio="xMidYMid slice" />`,
-    `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="400" text-anchor="start">${escapeXml(kickBranding.link.toUpperCase())}</text>`,
+    includeText
+      ? `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="400" text-anchor="start">${escapeXml(linkText)}</text>`
+      : "",
   ].join("");
 }
 
@@ -508,6 +581,8 @@ function estimateTextWidth(text, fontSize) {
 }
 
 function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = {}) {
+  const includeText = options.includeText !== false;
+
   return lines
     .map((line, index) => {
       const lineWidth = estimateTextWidth(line, fontSize);
@@ -526,6 +601,11 @@ function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = 
             );
             cursorX += fontSize * EMOJI_ADVANCE_RATIO;
             return icon;
+          }
+
+          if (!includeText) {
+            cursorX += estimateTextWidth(token.value, fontSize);
+            return "";
           }
 
           const width = estimateTextWidth(token.value, fontSize);
@@ -576,6 +656,100 @@ function overlayFontFaceCss() {
     "}",
     "</style>",
   ].join("");
+}
+
+async function buildOverlayTextComposites(normalized) {
+  const composites = await buildCaptionTextComposites(normalized);
+  const kickBranding = normalizeKickBranding(normalized.kickBranding);
+
+  if (kickBranding.enabled) {
+    composites.push(await buildKickLinkTextComposite(normalized, kickBranding));
+  }
+
+  return composites.filter(Boolean);
+}
+
+async function buildCaptionTextComposites(normalized) {
+  const { blockY, fontSize, lineHeight, lines, textColor, textRect } = createCaptionLayout(normalized);
+  const composites = [];
+
+  for (const [index, line] of lines.entries()) {
+    const lineWidth = estimateTextWidth(line, fontSize);
+    const baselineY = Math.round(blockY + fontSize + index * lineHeight);
+    let cursorX = Math.round(textRect.x + (textRect.width - lineWidth) / 2);
+
+    for (const token of tokenizeCaptionLine(line)) {
+      const width = estimateTextWidth(token.value, fontSize);
+
+      if (token.type !== "emoji") {
+        composites.push(await createTextComposite({
+          baselineY,
+          fill: textColor,
+          fontSize,
+          left: cursorX,
+          renderFontSize: Math.round(fontSize * 0.72),
+          text: token.value,
+          width,
+        }));
+      }
+
+      cursorX += token.type === "emoji"
+        ? fontSize * EMOJI_ADVANCE_RATIO
+        : width;
+    }
+  }
+
+  return composites;
+}
+
+async function buildKickLinkTextComposite(normalized, kickBranding) {
+  const { centerY, linkFontSize, linkText, linkX } = createKickBrandingLayout(normalized, kickBranding);
+
+  return createTextComposite({
+    baselineY: Math.round(centerY + linkFontSize * 0.34),
+    fill: "#ffffff",
+    fontSize: linkFontSize,
+    left: linkX,
+    text: linkText,
+    width: estimateTextWidth(linkText, linkFontSize),
+  });
+}
+
+async function createTextComposite({ baselineY, fill, fontSize, left, renderFontSize, text, width }) {
+  const rasterFontSize = renderFontSize ?? fontSize;
+  const textWidth = Math.max(8, Math.ceil(width + rasterFontSize * 2));
+  const textHeight = Math.max(8, Math.ceil(rasterFontSize * 1.8));
+  const top = Math.round(baselineY - rasterFontSize * 1.05);
+  const input = await renderTextPng(text, rasterFontSize, fill, textWidth, textHeight);
+
+  return {
+    input,
+    left: Math.round(left),
+    top,
+  };
+}
+
+async function renderTextPng(text, fontSize, fill, width, height) {
+  return sharp({
+    text: {
+      text: `<span font_desc="Noto Sans ${fontSize}" foreground="${escapePangoAttribute(fill)}">${escapePangoText(text)}</span>`,
+      font: "Noto Sans",
+      fontfile: OVERLAY_FONT_PATH,
+      height,
+      rgba: true,
+      width,
+    },
+  }).png().toBuffer();
+}
+
+async function maybeWriteOverlayDebugArtifacts(outputPath, svg) {
+  if (!process.env.KICK_CLIPPER_DEBUG_OVERLAY) {
+    return;
+  }
+
+  const debugPath = `${outputPath}.svg`;
+  await fsWriteFile(debugPath, svg);
+  console.info(`[kick-clipper] wrote overlay debug SVG: ${debugPath}`);
 }
 
 function parseCaptionEmojiTokens(text) {
@@ -689,6 +863,19 @@ function escapeXml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function escapePangoText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function escapePangoAttribute(value) {
+  return escapePangoText(value)
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 }
