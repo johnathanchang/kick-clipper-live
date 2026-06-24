@@ -67,7 +67,7 @@ export function resolveCaptionStyle(style = {}) {
     preset: style.preset ?? "classic-tiktok",
     background,
     textColor: style.textColor ?? textColor,
-    fontFamily: style.fontFamily ?? "Arial Rounded MT Bold, Arial Black, Impact, sans-serif",
+    fontFamily: style.fontFamily ?? "KickClipperOverlay",
     fontSize: style.fontSize,
   };
 }

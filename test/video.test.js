@@ -443,7 +443,7 @@ test("renderer falls back to native emoji text when a parsed Twemoji asset is mi
     try {
       const svg = buildRenderOverlaySvg(plan);
 
-      assert.match(svg, /Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji/);
+      assert.match(svg, /font-family="KickClipperOverlay"/);
       assert.match(svg, /🙂‍↔️/);
       assert.doesNotMatch(svg, /data:image\/svg\+xml;base64/);
     } finally {
@@ -504,6 +504,30 @@ test("renderer uses custom Kick link text in the watermark bar", () => {
 
   assert.equal(plan.kickBranding.link, "kick.com/adinross");
   assert.match(svg, /KICK\.COM\/ADINROSS/);
+});
+
+test("renderer uses bundled font for lower-safe caption and Kick link SVG text", () => {
+  const plan = createKickClipExportPlan({
+    source: { width: 720, height: 1280 },
+    sourcePath: "uploads/silky.mp4",
+    outputPath: "renders/silky.mp4",
+    captionText: "Lower heading stays readable",
+    captionPosition: CAPTION_POSITIONS.lowerSafe,
+    kickBranding: { enabled: true, link: "kick.com/clavicular" },
+    avoidWatermark: false,
+  });
+  const svg = buildRenderOverlaySvg(plan);
+  const textTags = svg.match(/<text\b[^>]*>/g) ?? [];
+
+  assert.ok(textTags.length >= 2);
+  assert.match(svg, />Lower heading stays</);
+  assert.match(svg, />readable</);
+  assert.match(svg, /KICK\.COM\/CLAVICULAR/);
+  assert.deepEqual(
+    textTags.map((tag) => /font-family="KickClipperOverlay"/.test(tag)),
+    textTags.map(() => true),
+  );
+  assert.doesNotMatch(svg, /Arial Rounded MT Bold|Arial Black|Impact|Helvetica|Segoe UI Emoji|Noto Color Emoji|EmojiSymbols/);
 });
 
 test("Kick watermark bar does not overlap lower-safe captions", () => {

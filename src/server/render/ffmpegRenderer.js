@@ -26,7 +26,6 @@ const OVERLAY_FONT_PATH = path.join(
   "noto-sans-v27-latin-regular.ttf",
 );
 const OVERLAY_FONT_FAMILY = "KickClipperOverlay";
-const EMOJI_FONT_FAMILY = "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, EmojiSymbols, sans-serif";
 const EMOJI_SIZE_RATIO = 1.05;
 const EMOJI_ADVANCE_RATIO = 1.13;
 const EMOJI_LEADING_GAP_RATIO = EMOJI_ADVANCE_RATIO - EMOJI_SIZE_RATIO;
@@ -373,7 +372,7 @@ function buildKickBrandingSvgLayer(normalized, kickBranding) {
   return [
     `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="#030303" opacity="0.9" />`,
     `<image href="${logoDataUri}" x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" preserveAspectRatio="xMidYMid slice" />`,
-    `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="700" text-anchor="start">${escapeXml(kickBranding.link.toUpperCase())}</text>`,
+    `<text x="${linkX}" y="${Math.round(centerY + linkFontSize * 0.34)}" fill="#ffffff" font-family="${OVERLAY_FONT_FAMILY}" font-size="${linkFontSize}" font-weight="400" text-anchor="start">${escapeXml(kickBranding.link.toUpperCase())}</text>`,
   ].join("");
 }
 
@@ -533,7 +532,7 @@ function svgRichTextLines(lines, lineHeight, rect, y, fontSize, fill, options = 
           const text = [
             `<text x="${cursorX}" y="${baselineY}" fill="${fill}"`,
             `font-family="${OVERLAY_FONT_FAMILY}"`,
-            `font-size="${fontSize}" font-weight="700" text-anchor="start"`,
+            `font-size="${fontSize}" font-weight="400" text-anchor="start"`,
             options.opacity ? `opacity="${options.opacity}"` : "",
             `>${escapeXml(token.value)}</text>`,
           ].filter(Boolean).join(" ");
@@ -572,7 +571,7 @@ function overlayFontFaceCss() {
     "@font-face{",
     `font-family:'${OVERLAY_FONT_FAMILY}';`,
     `src:url('${assetDataUri(OVERLAY_FONT_PATH, "font/ttf")}') format('truetype');`,
-    "font-weight:400 900;",
+    "font-weight:400;",
     "font-style:normal;",
     "}",
     "</style>",
@@ -662,7 +661,7 @@ function emojiSvg(token, x, baselineY, fontSize, options = {}) {
 function nativeEmojiTextSvg(emoji, x, baselineY, fontSize) {
   return [
     `<text x="${Math.round(x)}" y="${baselineY}" fill="#000000"`,
-    `font-family="${EMOJI_FONT_FAMILY}"`,
+    `font-family="${OVERLAY_FONT_FAMILY}"`,
     `font-size="${fontSize}" font-weight="400" text-anchor="start"`,
     `>${escapeXml(emoji)}</text>`,
   ].join(" ");
