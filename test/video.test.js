@@ -294,6 +294,20 @@ test("renderer normalizes the export payload into FFmpeg crop, scale, and captio
   assert.equal(args.at(-1), "/tmp/rendered.mp4");
 });
 
+test("renderer replaces a plain ffmpeg executable from export plans", () => {
+  const plan = createKickClipExportPlan({
+    source: { width: 1920, height: 1080 },
+    sourcePath: "uploads/source.mp4",
+    outputPath: "renders/output.mp4",
+    captionText: "Use packaged ffmpeg",
+    ffmpegPath: "ffmpeg",
+  });
+  const normalized = normalizeRenderPayload(plan);
+
+  assert.notEqual(normalized.ffmpegPath, "ffmpeg");
+  assert.match(normalized.ffmpegPath, /ffmpeg-static/);
+});
+
 test("renderer keeps caption burn-in enabled when drawtext is supported", () => {
   const mode = createRenderMode({
     drawtextSupported: true,

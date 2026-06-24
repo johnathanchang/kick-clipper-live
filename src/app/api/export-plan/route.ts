@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+import {
+  logResolvedFfmpegPath,
+  resolveFfmpegPath
+} from "@/server/render/ffmpegPath.js";
 import { createKickClipExportPlan } from "../../../video/index.js";
 
 export const runtime = "nodejs";
@@ -31,6 +35,9 @@ export async function POST(request: Request) {
   }
 
   try {
+    const ffmpegPath = resolveFfmpegPath(body?.ffmpegPath);
+    logResolvedFfmpegPath("export-plan route", ffmpegPath);
+
     const exportPlan = createKickClipExportPlan({
       source: { width: sourceWidth, height: sourceHeight },
       videoId: body?.videoId,
@@ -50,7 +57,7 @@ export async function POST(request: Request) {
       avoidWatermark: body?.avoidWatermark !== false,
       watermarkCorner: body?.watermarkCorner,
       captionBox: body?.captionBox,
-      ffmpegPath: body?.ffmpegPath,
+      ffmpegPath,
     });
 
     return NextResponse.json({ exportPlan });

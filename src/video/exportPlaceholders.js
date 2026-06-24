@@ -69,7 +69,7 @@ export function createKickClipExportPlan(input) {
     kickBrandingOverlay,
     safeZones,
     ffmpeg: {
-      executable: input.ffmpegPath ?? "ffmpeg",
+      executable: input.ffmpegPath ?? null,
       argsPreview: [
         "-i",
         input.sourcePath ?? "<input>",

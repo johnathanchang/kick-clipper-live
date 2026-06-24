@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ffmpegStaticPath from "ffmpeg-static";
 import sharp from "sharp";
 import { parse as parseTwemoji } from "@twemoji/parser";
+import { getPackagedFfmpegPath, resolveFfmpegPath } from "./ffmpegPath.js";
 
 const PUBLIC_ASSETS_DIR = path.join(process.cwd(), "public", "assets");
 const DEFAULT_TWEMOJI_ASSET_DIR = path.join(
@@ -19,7 +19,7 @@ const EMOJI_FONT_FAMILY = "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, 
 const EMOJI_SIZE_RATIO = 1.05;
 const EMOJI_ADVANCE_RATIO = 1.13;
 const EMOJI_LEADING_GAP_RATIO = EMOJI_ADVANCE_RATIO - EMOJI_SIZE_RATIO;
-const DEFAULT_FFMPEG_PATH = ffmpegStaticPath || "ffmpeg";
+const DEFAULT_FFMPEG_PATH = getPackagedFfmpegPath();
 const assetDataUriCache = new Map();
 
 export class RenderValidationError extends Error {
@@ -70,7 +70,7 @@ export function normalizeRenderPayload(input = {}) {
     captionRect,
     captionText,
     captionStyle,
-    ffmpegPath: input.ffmpegPath ?? payload.ffmpeg?.executable ?? DEFAULT_FFMPEG_PATH,
+    ffmpegPath: resolveFfmpegPath(input.ffmpegPath ?? payload.ffmpeg?.executable),
   };
 }
 

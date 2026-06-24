@@ -8,6 +8,10 @@ import {
   getSupabaseServerConfig
 } from "@/lib/supabase/server";
 import {
+  logResolvedFfmpegPath,
+  resolveFfmpegPath
+} from "@/server/render/ffmpegPath.js";
+import {
   RenderValidationError,
   buildFfmpegRenderArgs,
   buildJobStatusPatch,
@@ -110,7 +114,11 @@ export async function POST(request: Request) {
       requestPlan.sourceBucket = source.sourceBucket;
     }
 
-    normalized = normalizeRenderPayload(requestPlan);
+    normalized = normalizeRenderPayload({
+      ...requestPlan,
+      ffmpegPath: resolveFfmpegPath(requestPlan.ffmpegPath ?? requestPlan.ffmpeg?.executable),
+    });
+    logResolvedFfmpegPath("render route", normalized.ffmpegPath);
     await updateJobStatus(supabase, normalized.jobId, "processing");
     const renderSupport = await detectFfmpegRenderSupport(normalized.ffmpegPath);
     renderMode = createRenderMode(renderSupport, normalized.ffmpegPath);
