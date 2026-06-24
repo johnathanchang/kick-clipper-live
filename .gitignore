@@ -1,0 +1,17 @@
+node_modules/
+.next/
+.context/
+out/
+dist/
+.cache/
+coverage/
+.DS_Store
+.env
+.env.local
+.env*.local
+*.log
+*.mp4
+*.mov
+*.mkv
+*.webm
+tsconfig.tsbuildinfo
