@@ -5,7 +5,11 @@ const workspaceRoot = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
-  outputFileTracingRoot: workspaceRoot
+  outputFileTracingRoot: workspaceRoot,
+  serverExternalPackages: ["ffmpeg-static"],
+  outputFileTracingIncludes: {
+    "/api/render": ["./node_modules/ffmpeg-static/ffmpeg"]
+  }
 };
 
 export default nextConfig;

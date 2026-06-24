@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import ffmpegStaticPath from "ffmpeg-static";
 import sharp from "sharp";
 import { parse as parseTwemoji } from "@twemoji/parser";
 
@@ -18,6 +19,7 @@ const EMOJI_FONT_FAMILY = "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, 
 const EMOJI_SIZE_RATIO = 1.05;
 const EMOJI_ADVANCE_RATIO = 1.13;
 const EMOJI_LEADING_GAP_RATIO = EMOJI_ADVANCE_RATIO - EMOJI_SIZE_RATIO;
+const DEFAULT_FFMPEG_PATH = ffmpegStaticPath || "ffmpeg";
 const assetDataUriCache = new Map();
 
 export class RenderValidationError extends Error {
@@ -68,7 +70,7 @@ export function normalizeRenderPayload(input = {}) {
     captionRect,
     captionText,
     captionStyle,
-    ffmpegPath: input.ffmpegPath ?? payload.ffmpeg?.executable ?? "ffmpeg",
+    ffmpegPath: input.ffmpegPath ?? payload.ffmpeg?.executable ?? DEFAULT_FFMPEG_PATH,
   };
 }
 
@@ -143,7 +145,7 @@ export function buildFfmpegRenderArgs(payload, localInputPath, localOutputPath, 
   ];
 }
 
-export async function detectFfmpegRenderSupport(ffmpegPath = "ffmpeg") {
+export async function detectFfmpegRenderSupport(ffmpegPath = DEFAULT_FFMPEG_PATH) {
   await assertFfmpegAvailable(ffmpegPath);
   const [drawtextSupported, overlaySupported] = await Promise.all([
     ffmpegSupportsFilter(ffmpegPath, "drawtext"),
@@ -158,7 +160,7 @@ export async function detectFfmpegRenderSupport(ffmpegPath = "ffmpeg") {
   };
 }
 
-export function createRenderMode(renderSupport, ffmpegPath = "ffmpeg") {
+export function createRenderMode(renderSupport, ffmpegPath = DEFAULT_FFMPEG_PATH) {
   if (renderSupport?.drawtextSupported) {
     return {
       mode: "caption-burn-in",
@@ -188,7 +190,7 @@ export function createRenderMode(renderSupport, ffmpegPath = "ffmpeg") {
   };
 }
 
-export async function ffmpegSupportsFilter(ffmpegPath = "ffmpeg", filterName) {
+export async function ffmpegSupportsFilter(ffmpegPath = DEFAULT_FFMPEG_PATH, filterName) {
   const result = await runProcess(ffmpegPath, ["-hide_banner", "-filters"]);
   const filterPattern = new RegExp(`\\b${escapeRegExp(filterName)}\\b`);
 
@@ -197,7 +199,7 @@ export async function ffmpegSupportsFilter(ffmpegPath = "ffmpeg", filterName) {
     .some((line) => filterPattern.test(line));
 }
 
-export function createCaptionBurnInUnavailableMessage(ffmpegPath = "ffmpeg") {
+export function createCaptionBurnInUnavailableMessage(ffmpegPath = DEFAULT_FFMPEG_PATH) {
   return [
     "Caption burn-in is unavailable because this local FFmpeg build cannot draw or overlay captions.",
     `Install an FFmpeg build with drawtext or overlay support, then make sure '${ffmpegPath}' points to that build.`,
@@ -364,7 +366,7 @@ function buildKickBrandingSvgLayer(normalized, kickBranding) {
   ].join("");
 }
 
-export async function assertFfmpegAvailable(ffmpegPath = "ffmpeg") {
+export async function assertFfmpegAvailable(ffmpegPath = DEFAULT_FFMPEG_PATH) {
   try {
     await runProcess(ffmpegPath, ["-version"]);
   } catch (error) {
