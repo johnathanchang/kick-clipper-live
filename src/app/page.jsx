@@ -235,7 +235,7 @@ export default function HomePage() {
 
   return (
     <div className="app-shell">
-      <Header currentStep={step} onNavigate={setStep} hasVideo={Boolean(videoFile)} />
+      <Header />
 
       <main>
         {step === "upload" && (
@@ -302,32 +302,32 @@ export default function HomePage() {
           />
         )}
       </main>
+
+      <Footer />
     </div>
   );
 }
 
-function Header({ currentStep, onNavigate, hasVideo }) {
+function Header() {
   return (
     <header className="top-bar">
       <div>
-        <p className="eyebrow">Kick Clipper</p>
-        <h1>Watermark-aware captions for Kick clips</h1>
+        <h1 className="brand-title">Kick Clipper</h1>
       </div>
-
-      <nav className="step-nav" aria-label="Workflow">
-        {["upload", "editor", "export"].map((step) => (
-          <button
-            className={currentStep === step ? "active" : ""}
-            disabled={step !== "upload" && !hasVideo}
-            key={step}
-            onClick={() => onNavigate(step)}
-            type="button"
-          >
-            {step[0].toUpperCase() + step.slice(1)}
-          </button>
-        ))}
-      </nav>
     </header>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="app-footer">
+      <nav aria-label="Footer links">
+        <a href="https://github.com/johnathanchang/kick-clipper-live" rel="noreferrer" target="_blank">
+          GitHub
+        </a>
+        <a href="mailto:johnathanchang7@gmail.com">Feedback</a>
+      </nav>
+    </footer>
   );
 }
 
@@ -335,12 +335,17 @@ function UploadPage({ jobState, uploadState, videoFile, onVideoUpload, onContinu
   return (
     <section className="upload-layout">
       <div className="upload-copy">
-        <p className="eyebrow">Streamer MVP</p>
-        <h2>Upload a Kick clip and prepare captions fast.</h2>
+        <h2>Upload your clips and edit them in seconds.</h2>
         <p>
-          Start with a local video file. Kick Clipper immediately shows the
-          9:16 caption preview and sends the file to the backend upload route
-          when Supabase is configured.
+          Upload your videos or directly from a Kick stream. Kick Clipper takes
+          the most viral moments and turns them into edited clips eligible to be
+          paid out on clipping platforms.
+        </p>
+        <p className="clipping-opportunity">
+          Looking for clipping opportunities?{" "}
+          <a href="https://clipping.net" rel="noreferrer" target="_blank">
+            Click here
+          </a>
         </p>
       </div>
 
