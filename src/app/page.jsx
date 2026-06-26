@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CAPTION_POSITIONS,
@@ -41,12 +41,12 @@ export default function HomePage() {
     width: 840,
     height: 260,
   });
-  const [avoidWatermark, setAvoidWatermark] = useState(true);
-  const [showSafeZones, setShowSafeZones] = useState(true);
+  const [avoidWatermark] = useState(true);
   const [uploadState, setUploadState] = useState({ status: "idle" });
   const [jobState, setJobState] = useState({ status: "idle" });
   const [serverExportState, setServerExportState] = useState({ status: "idle" });
   const [renderState, setRenderState] = useState({ status: "idle" });
+  const exportStartedRef = useRef(false);
 
   useEffect(() => {
     if (!videoFile) {
@@ -59,6 +59,10 @@ export default function HomePage() {
 
     return () => URL.revokeObjectURL(objectUrl);
   }, [videoFile]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [step]);
 
   useEffect(() => {
     const jobId = uploadState.result?.jobId;
@@ -155,6 +159,7 @@ export default function HomePage() {
     setVideoFile(file);
     setSourceDimensions(null);
     setStep("editor");
+    exportStartedRef.current = false;
     setUploadState({ status: "uploading" });
     setServerExportState({ status: "idle" });
     setRenderState({ status: "idle" });
@@ -182,7 +187,7 @@ export default function HomePage() {
     }
   }
 
-  async function requestServerExportPlan() {
+  async function createServerExportPlan() {
     setServerExportState({ status: "planning" });
     setRenderState({ status: "idle" });
 
@@ -195,21 +200,26 @@ export default function HomePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Export payload generation failed.");
+        throw new Error(data.error || "Clip preparation failed.");
       }
 
       setServerExportState({ status: "planned", result: data.exportPlan });
+      return data.exportPlan;
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Clip preparation failed.";
       setServerExportState({
         status: "failed",
-        error: error instanceof Error ? error.message : "Export payload generation failed.",
+        error: message,
       });
+      setRenderState({
+        status: "failed",
+        error: message,
+      });
+      throw error;
     }
   }
 
-  async function requestRender() {
-    const exportPlan = serverExportState.result ?? localExportPlan;
-
+  async function renderClip(exportPlan) {
     setRenderState({ status: "rendering" });
 
     try {
@@ -221,20 +231,60 @@ export default function HomePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Render failed.");
+        throw new Error(data.error || "Clip preparation failed.");
       }
 
       setRenderState({ status: "complete", result: data });
+      return data;
     } catch (error) {
       setRenderState({
         status: "failed",
-        error: error instanceof Error ? error.message : "Render failed.",
+        error: error instanceof Error ? error.message : "Clip preparation failed.",
       });
+      throw error;
     }
   }
 
+  async function prepareClipForDownload() {
+    try {
+      const exportPlan = await createServerExportPlan();
+      await renderClip(exportPlan);
+    } catch {
+      // The visible error state is set by the failed step above.
+    }
+  }
+
+  useEffect(() => {
+    if (step !== "export") {
+      exportStartedRef.current = false;
+      return;
+    }
+
+    if (renderState.status !== "idle") {
+      return;
+    }
+
+    if (uploadState.status === "uploading") {
+      return;
+    }
+
+    if (uploadState.status !== "uploaded") {
+      setRenderState({
+        status: "failed",
+        error: "Upload your clip before downloading the final version.",
+      });
+      return;
+    }
+
+    if (exportStartedRef.current) {
+      return;
+    }
+
+    exportStartedRef.current = true;
+    prepareClipForDownload();
+  }, [step, renderState.status, uploadState.status]);
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${step === "export" ? "app-shell-export" : ""}`}>
       <Header />
 
       <main>
@@ -250,7 +300,6 @@ export default function HomePage() {
 
         {step === "editor" && (
           <EditorPage
-            avoidWatermark={avoidWatermark}
             captionBackground={captionBackground}
             captionText={captionText}
             customRect={customRect}
@@ -259,12 +308,8 @@ export default function HomePage() {
             kickBrandingEnabled={kickBrandingEnabled}
             kickLink={kickLink}
             position={position}
-            showSafeZones={showSafeZones}
-            jobState={jobState}
-            uploadState={uploadState}
             videoFile={videoFile}
             videoUrl={videoUrl}
-            onAvoidWatermarkChange={setAvoidWatermark}
             onCaptionBackgroundChange={setCaptionBackground}
             onCaptionTextChange={setCaptionText}
             onCustomRectChange={setCustomRect}
@@ -273,32 +318,13 @@ export default function HomePage() {
             onKickBrandingEnabledChange={setKickBrandingEnabled}
             onKickLinkChange={setKickLink}
             onPositionChange={setPosition}
-            onShowSafeZonesChange={setShowSafeZones}
             onVideoMetadata={setSourceDimensions}
           />
         )}
 
         {step === "export" && (
           <ExportPage
-            exportInput={exportInput}
-            localExportPlan={localExportPlan}
-            jobState={jobState}
             renderState={renderState}
-            serverExportState={serverExportState}
-            uploadState={uploadState}
-            videoFile={videoFile}
-            onBackToEditor={() => setStep("editor")}
-            onCreateExportPlan={requestServerExportPlan}
-            onNewClip={() => {
-              setVideoFile(null);
-              setSourceDimensions(null);
-              setServerExportState({ status: "idle" });
-              setRenderState({ status: "idle" });
-              setUploadState({ status: "idle" });
-              setJobState({ status: "idle" });
-              setStep("upload");
-            }}
-            onRender={requestRender}
           />
         )}
       </main>
@@ -376,7 +402,6 @@ function UploadPage({ jobState, uploadState, videoFile, onVideoUpload, onContinu
 }
 
 function EditorPage({
-  avoidWatermark,
   captionBackground,
   captionText,
   customRect,
@@ -385,12 +410,8 @@ function EditorPage({
   kickBrandingEnabled,
   kickLink,
   position,
-  showSafeZones,
-  jobState,
-  uploadState,
   videoFile,
   videoUrl,
-  onAvoidWatermarkChange,
   onCaptionBackgroundChange,
   onCaptionTextChange,
   onCustomRectChange,
@@ -399,7 +420,6 @@ function EditorPage({
   onKickBrandingEnabledChange,
   onKickLinkChange,
   onPositionChange,
-  onShowSafeZonesChange,
   onVideoMetadata,
 }) {
   return (
@@ -407,7 +427,7 @@ function EditorPage({
       <div className="preview-panel">
         <div className="preview-stage">
           <div className="video-frame">
-            {videoFile ? (
+            {videoFile && videoUrl ? (
               <video
                 controls
                 onLoadedMetadata={(event) => {
@@ -418,16 +438,15 @@ function EditorPage({
                 }}
                 src={videoUrl}
               />
-            ) : (
+            ) : !videoFile ? (
               <div className="empty-preview">
                 <p>No video selected</p>
                 <span>Upload a clip to see the preview.</span>
               </div>
-            )}
+            ) : null}
 
             {videoFile && (
               <>
-                {showSafeZones && <SafeZoneOverlay safeZones={exportPlan.safeZones} />}
                 <CaptionOverlay
                   background={captionBackground}
                   captionText={captionText}
@@ -440,44 +459,32 @@ function EditorPage({
                       : exportPlan.captionRenderPlan.rect
                   }
                 />
-                {kickBrandingEnabled && <KickBrandBar link={normalizeKickLink(kickLink)} />}
               </>
             )}
           </div>
         </div>
 
         <div className="preview-footer">
-          <div>
-            <p>9:16 Reel preview</p>
-            <span>{buildPlacementSummary(exportPlan)}</span>
-          </div>
           <button className="primary-button" disabled={!videoFile} onClick={onExport} type="button">
-            Export clip
+            <img alt="" aria-hidden="true" className="button-icon" src="/assets/download-icon.png" />
+            <span>Export clip</span>
           </button>
         </div>
-
-        <UploadStatus uploadState={uploadState} compact />
-        <JobStatus jobState={jobState} compact />
       </div>
 
       <CaptionSettingsPanel
-        avoidWatermark={avoidWatermark}
         captionBackground={captionBackground}
         captionText={captionText}
-        exportPlan={exportPlan}
         fontSize={fontSize}
         kickBrandingEnabled={kickBrandingEnabled}
         kickLink={kickLink}
         position={position}
-        showSafeZones={showSafeZones}
-        onAvoidWatermarkChange={onAvoidWatermarkChange}
         onCaptionBackgroundChange={onCaptionBackgroundChange}
         onCaptionTextChange={onCaptionTextChange}
         onFontSizeChange={onFontSizeChange}
         onKickBrandingEnabledChange={onKickBrandingEnabledChange}
         onKickLinkChange={onKickLinkChange}
         onPositionChange={onPositionChange}
-        onShowSafeZonesChange={onShowSafeZonesChange}
       />
     </section>
   );
@@ -562,43 +569,26 @@ function CaptionOverlay({
   );
 }
 
-function KickBrandBar({ link }) {
-  return (
-    <div className="kick-brand-bar">
-      <div className="kick-logo-block">
-        <img alt="Kick" src="/brand/kick-logo.png" />
-      </div>
-      <div className="kick-link-text">{link.toUpperCase()}</div>
-    </div>
-  );
-}
-
 function CaptionSettingsPanel({
-  avoidWatermark,
   captionBackground,
   captionText,
-  exportPlan,
   fontSize,
   kickBrandingEnabled,
   kickLink,
   position,
-  showSafeZones,
-  onAvoidWatermarkChange,
   onCaptionBackgroundChange,
   onCaptionTextChange,
   onFontSizeChange,
   onKickBrandingEnabledChange,
   onKickLinkChange,
   onPositionChange,
-  onShowSafeZonesChange,
 }) {
   const positions = getRecommendedCaptionPositions();
 
   return (
     <aside className="settings-panel">
       <div>
-        <p className="eyebrow">Caption settings</p>
-        <h2>Place captions outside Kick watermark risk zones.</h2>
+        <h2 className="settings-title">Clipping Settings</h2>
       </div>
 
       <label className="field-group">
@@ -702,198 +692,63 @@ function CaptionSettingsPanel({
       {position === CAPTION_POSITIONS.custom && (
         <div className="drag-hint">Drag the caption directly on the Reel preview.</div>
       )}
-
-      <label className="toggle-row">
-        <input
-          checked={avoidWatermark}
-          onChange={(event) => onAvoidWatermarkChange(event.target.checked)}
-          type="checkbox"
-        />
-        <span>
-          <strong>Avoid Kick watermark</strong>
-          <small>Move risky placements away from bottom-corner overlay zones.</small>
-        </span>
-      </label>
-
-      <label className="toggle-row">
-        <input
-          checked={showSafeZones}
-          onChange={(event) => onShowSafeZonesChange(event.target.checked)}
-          type="checkbox"
-        />
-        <span>
-          <strong>Show safe-zone preview</strong>
-          <small>Display the same exclusion zones used for export planning.</small>
-        </span>
-      </label>
-
-      <div className="integration-note">
-        <p>{exportPlan.requestedCaption.adjustedForSafety ? "Adjusted for safety" : "Placement ready"}</p>
-        <span>{buildPlacementSummary(exportPlan)}</span>
-      </div>
     </aside>
   );
 }
 
-function ExportPage({
-  exportInput,
-  localExportPlan,
-  jobState,
-  renderState,
-  serverExportState,
-  uploadState,
-  videoFile,
-  onBackToEditor,
-  onCreateExportPlan,
-  onNewClip,
-  onRender,
-}) {
-  const visiblePlan = serverExportState.result ?? localExportPlan;
-  const canRender = uploadState.status === "uploaded" && renderState.status !== "rendering";
-  const exportStatusText =
-    renderState.status === "complete"
-      ? "Rendered MP4 saved to Supabase Storage"
-      : renderState.status === "rendering"
-        ? "Backend renderer is processing"
-        : serverExportState.status === "planned"
-          ? "Backend export payload generated"
-          : "Local export payload ready";
+function ExportPage({ renderState }) {
+  const signedUrl = renderState.result?.signedUrl;
+  const isComplete = renderState.status === "complete" && signedUrl;
+  const hasFailed = renderState.status === "failed";
+
+  function handleDownload() {
+    if (!signedUrl) {
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = signedUrl;
+    link.download = renderState.result?.outputPath || "kick-clipper-reel.mp4";
+    link.rel = "noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
 
   return (
-    <section className="export-layout">
-      <div className="export-panel">
-        <p className="eyebrow">Export</p>
-        <h2>Export plan ready</h2>
+    <section className="export-layout final-export-layout">
+      <div className="final-preview-panel">
+        <div className="preview-stage">
+          <div className="video-frame final-video-frame">
+            {isComplete ? (
+              <video autoPlay loop muted playsInline src={signedUrl} />
+            ) : (
+              <div className="empty-preview">
+                <p>{hasFailed ? "Preview unavailable" : "Preparing preview"}</p>
+                <span>{hasFailed ? "Please try exporting the clip again." : "Your finished clip will appear here."}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <aside className="success-panel">
+        <div className={`success-icon ${hasFailed ? "success-icon-failed" : ""}`}>
+          {hasFailed ? "!" : "✓"}
+        </div>
+        <h2>{isComplete ? "Your clip is ready!" : hasFailed ? "Clip needs another try" : "Preparing your clip..."}</h2>
         <p>
-          This export plan is ready for the backend renderer to crop, scale, and burn captions
-          into the final MP4.
+          {isComplete
+            ? "Your final clip is ready to download."
+            : hasFailed
+              ? renderState.error || "Something went wrong while finishing your clip."
+              : "Finishing your edits now."}
         </p>
-
-        <div className="export-summary-card">
-          <div>
-            <span>Clip</span>
-            <strong>{videoFile?.name || "No video selected"}</strong>
-          </div>
-          <div>
-            <span>Backend upload</span>
-            <strong>{describeUpload(uploadState)}</strong>
-          </div>
-          <div>
-            <span>Processing job</span>
-            <strong>{describeJob(jobState)}</strong>
-          </div>
-          <div>
-            <span>Caption placement</span>
-            <strong>{buildPlacementSummary(visiblePlan)}</strong>
-          </div>
-          <div>
-            <span>Kick link bar</span>
-            <strong>
-              {visiblePlan.kickBranding?.enabled
-                ? `Included: ${visiblePlan.kickBranding.link}`
-                : "Not included"}
-            </strong>
-          </div>
-        </div>
-
-        <p className="next-step-message">
-          Keep the actions below visible while you generate the payload or render the MP4.
-        </p>
-
-        <div className="export-actions">
-          <button className="secondary-button" onClick={onBackToEditor} type="button">
-            Back to editor
-          </button>
-          <button
-            className="primary-button"
-            disabled={!videoFile || serverExportState.status === "planning"}
-            onClick={onCreateExportPlan}
-            type="button"
-          >
-            {serverExportState.status === "planning" ? "Generating..." : "Generate backend payload"}
-          </button>
-          <button
-            className="primary-button"
-            disabled={!canRender}
-            onClick={onRender}
-            type="button"
-          >
-            {renderState.status === "rendering" ? "Rendering..." : "Render MP4"}
-          </button>
-          <button className="ghost-button" onClick={onNewClip} type="button">
-            New clip
-          </button>
-        </div>
-
-        {serverExportState.status === "failed" && (
-          <section className="error-banner" aria-label="Export payload error output">
-            <strong>Payload output</strong>
-            <pre className="ffmpeg-error-output">{serverExportState.error}</pre>
-          </section>
-        )}
-
-        {uploadState.status !== "uploaded" && (
-          <p className="error-banner">
-            Upload the clip to backend storage before rendering an MP4.
-          </p>
-        )}
-
-        {renderState.status === "failed" && (
-          <section className="error-banner" aria-label="Render error">
-            <strong>Render error</strong>
-            <pre className="ffmpeg-error-output">{renderState.error}</pre>
-          </section>
-        )}
-
-        {renderState.status === "complete" && (
-          <div className="render-result">
-            <p>Rendered MP4 ready</p>
-            <span>{renderState.result.outputPath}</span>
-            <span>{renderState.result.captionBurnIn?.enabled ? "Captions included" : "Caption render unavailable"}</span>
-            <span>{renderState.result.kickBranding?.enabled ? "Kick link bar included" : "Kick link bar not included"}</span>
-            {renderState.result.signedUrl && (
-              <a href={renderState.result.signedUrl} rel="noreferrer" target="_blank">
-                Open signed download
-              </a>
-            )}
-          </div>
-        )}
-
-        <details className="advanced-details">
-          <summary>Advanced details</summary>
-          <p>
-            Raw export-plan JSON for engineers. This describes how the renderer should crop,
-            place captions, handle watermark-safe placement, and build FFmpeg arguments.
-          </p>
-          <pre className="payload-preview">
-            {JSON.stringify(
-              {
-                videoId: visiblePlan.videoId,
-                jobId: visiblePlan.jobId,
-                source: visiblePlan.reelPlan.source,
-                target: visiblePlan.reelPlan.target,
-                selectedCrop: visiblePlan.selectedCrop,
-                detectedPrimarySubject: visiblePlan.detectedPrimarySubject,
-                faceSafeZone: visiblePlan.faceSafeZone,
-                captionRect: visiblePlan.captionRect,
-                captionStyle: visiblePlan.captionStyle,
-                kickBranding: visiblePlan.kickBranding,
-                kickBrandingOverlay: visiblePlan.kickBrandingOverlay,
-                fallbackReason: visiblePlan.fallbackReason,
-                caption: visiblePlan.requestedCaption,
-                ffmpeg: visiblePlan.ffmpeg,
-              },
-              null,
-              2,
-            )}
-          </pre>
-        </details>
-      </div>
-
-      <div className="export-status" role="status">
-        <span className="status-dot" />
-        {exportStatusText}
-      </div>
+        <button className="primary-button download-clip-button" disabled={!isComplete} onClick={handleDownload} type="button">
+          <img alt="" aria-hidden="true" className="button-icon" src="/assets/download-icon.png" />
+          <span>Download Clip</span>
+        </button>
+      </aside>
     </section>
   );
 }
@@ -936,32 +791,24 @@ function buildPlacementSummary(exportPlan) {
 }
 
 function describeUpload(uploadState) {
-  if (uploadState.status === "uploading") return "Uploading to backend...";
-  if (uploadState.status === "uploaded") return `Uploaded; job ${uploadState.result.jobId}`;
+  if (uploadState.status === "uploading") return "Uploading clip...";
+  if (uploadState.status === "uploaded") return "Upload complete";
   if (uploadState.status === "local-only") return `Local preview only: ${uploadState.error}`;
   return "Not uploaded yet";
 }
 
 function describeJob(jobState) {
-  if (jobState.status === "polling") return "Checking backend processing job...";
-  if (jobState.status === "failed") return `Job status unavailable: ${jobState.error}`;
+  if (jobState.status === "polling") return "Checking clip status...";
+  if (jobState.status === "failed") return `Clip status unavailable: ${jobState.error}`;
   if (jobState.status === "synced" && jobState.job) {
     if (jobState.job.status === "failed") {
-      return `Processing failed: ${jobState.job.error_message || "Unknown error"}`;
+      return `Clip failed: ${jobState.job.error_message || "Unknown error"}`;
     }
 
-    return `Processing job ${jobState.job.status}`;
+    return `Clip ${jobState.job.status}`;
   }
 
-  return "No backend job yet";
-}
-
-function formatBackendIds(exportInput) {
-  if (!exportInput.videoId && !exportInput.jobId) {
-    return "Local preview only";
-  }
-
-  return [`video ${exportInput.videoId || "n/a"}`, `job ${exportInput.jobId || "n/a"}`].join(", ");
+  return "No clip status yet";
 }
 
 function normalizeKickLink(value) {
