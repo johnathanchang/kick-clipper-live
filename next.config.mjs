@@ -13,7 +13,7 @@ const nextConfig = {
       "./node_modules/ffmpeg-static/ffmpeg",
       "./public/assets/fonts/**/*.ttf",
       "./public/assets/kick-logo.png",
-      "./node_modules/@discordapp/twemoji/dist/svg/**/*.svg"
+      "./node_modules/emoji-datasource-apple/img/apple/64/**/*.png"
     ]
   }
 };

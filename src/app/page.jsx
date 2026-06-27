@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   CAPTION_POSITIONS,
@@ -13,6 +14,12 @@ import {
 const DEFAULT_CAPTION = "Chat went wild for this moment";
 const DEFAULT_KICK_LINK = "kick.com/clavicular";
 const DEFAULT_SOURCE = { width: 1920, height: 1080 };
+const DEFAULT_CUSTOM_RECT = {
+  x: 120,
+  y: 720,
+  width: 840,
+  height: 260,
+};
 const CAPTION_BOX = { widthRatio: 0.84, heightRatio: 0.14 };
 const CAPTION_STYLE = {
   classicTikTok: "classic-tiktok",
@@ -22,9 +29,13 @@ const CAPTION_BACKGROUNDS = {
   black: "black",
   none: "none",
 };
+const KICK_LINK_FONT_RATIO = 0.3;
 const POPULAR_CAPTION_EMOJIS = ["😭", "😂", "😳", "💀", "❤️", "👀"];
+const GITHUB_URL = "https://github.com/johnathanchang/kick-clipper-live";
+const FEEDBACK_EMAIL = "mailto:johnathanchang7@gmail.com";
 
 export default function HomePage() {
+  const router = useRouter();
   const [step, setStep] = useState("upload");
   const [videoFile, setVideoFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState("");
@@ -35,18 +46,15 @@ export default function HomePage() {
   const [kickBrandingEnabled, setKickBrandingEnabled] = useState(true);
   const [kickLink, setKickLink] = useState(DEFAULT_KICK_LINK);
   const [position, setPosition] = useState(CAPTION_POSITIONS.lowerSafe);
-  const [customRect, setCustomRect] = useState({
-    x: 120,
-    y: 720,
-    width: 840,
-    height: 260,
-  });
+  const [customRect, setCustomRect] = useState(DEFAULT_CUSTOM_RECT);
   const [avoidWatermark] = useState(true);
   const [uploadState, setUploadState] = useState({ status: "idle" });
   const [jobState, setJobState] = useState({ status: "idle" });
   const [serverExportState, setServerExportState] = useState({ status: "idle" });
   const [renderState, setRenderState] = useState({ status: "idle" });
+  const [isNavigating, setIsNavigating] = useState(false);
   const exportStartedRef = useRef(false);
+  const navigationLockRef = useRef(false);
 
   useEffect(() => {
     if (!videoFile) {
@@ -164,20 +172,8 @@ export default function HomePage() {
     setServerExportState({ status: "idle" });
     setRenderState({ status: "idle" });
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Upload failed.");
-      }
-
+      const data = await uploadVideoFile(file);
       setUploadState({ status: "uploaded", result: data });
     } catch (error) {
       setUploadState({
@@ -254,6 +250,61 @@ export default function HomePage() {
     }
   }
 
+  function runNavigation(action) {
+    if (navigationLockRef.current) {
+      return;
+    }
+
+    navigationLockRef.current = true;
+    setIsNavigating(true);
+
+    window.setTimeout(() => {
+      action();
+
+      window.setTimeout(() => {
+        navigationLockRef.current = false;
+        setIsNavigating(false);
+      }, 260);
+    }, 90);
+  }
+
+  function handleOpenExport() {
+    runNavigation(() => {
+      exportStartedRef.current = false;
+      setServerExportState({ status: "idle" });
+      setRenderState({ status: "idle" });
+      setStep("export");
+    });
+  }
+
+  function handleBackToEditor() {
+    runNavigation(() => {
+      setStep("editor");
+    });
+  }
+
+  function handleNewClip() {
+    runNavigation(() => {
+      exportStartedRef.current = false;
+      setVideoFile(null);
+      setVideoUrl("");
+      setSourceDimensions(null);
+      setCaptionText(DEFAULT_CAPTION);
+      setFontSize(42);
+      setCaptionBackground(CAPTION_BACKGROUNDS.white);
+      setKickBrandingEnabled(true);
+      setKickLink(DEFAULT_KICK_LINK);
+      setPosition(CAPTION_POSITIONS.lowerSafe);
+      setCustomRect({ ...DEFAULT_CUSTOM_RECT });
+      setUploadState({ status: "idle" });
+      setJobState({ status: "idle" });
+      setServerExportState({ status: "idle" });
+      setRenderState({ status: "idle" });
+      setStep("upload");
+      router.push("/");
+    });
+  }
+
   useEffect(() => {
     if (step !== "export") {
       exportStartedRef.current = false;
@@ -313,17 +364,21 @@ export default function HomePage() {
             onCaptionBackgroundChange={setCaptionBackground}
             onCaptionTextChange={setCaptionText}
             onCustomRectChange={setCustomRect}
-            onExport={() => setStep("export")}
+            onExport={handleOpenExport}
             onFontSizeChange={setFontSize}
             onKickBrandingEnabledChange={setKickBrandingEnabled}
             onKickLinkChange={setKickLink}
             onPositionChange={setPosition}
             onVideoMetadata={setSourceDimensions}
+            isNavigating={isNavigating}
           />
         )}
 
         {step === "export" && (
           <ExportPage
+            isNavigating={isNavigating}
+            onBack={handleBackToEditor}
+            onNewClip={handleNewClip}
             renderState={renderState}
           />
         )}
@@ -345,13 +400,23 @@ function Header() {
 }
 
 function Footer() {
+  function openGitHub() {
+    window.open(GITHUB_URL, "_blank", "noopener,noreferrer");
+  }
+
+  function openFeedback() {
+    window.location.href = FEEDBACK_EMAIL;
+  }
+
   return (
     <footer className="app-footer">
       <nav aria-label="Footer links">
-        <a href="https://github.com/johnathanchang/kick-clipper-live" rel="noreferrer" target="_blank">
+        <button aria-label="Open Kick Clipper GitHub repository" onClick={openGitHub} type="button">
           GitHub
-        </a>
-        <a href="mailto:johnathanchang7@gmail.com">Feedback</a>
+        </button>
+        <button aria-label="Send feedback by email" onClick={openFeedback} type="button">
+          Feedback
+        </button>
       </nav>
     </footer>
   );
@@ -359,7 +424,7 @@ function Footer() {
 
 function UploadPage({ jobState, uploadState, videoFile, onVideoUpload, onContinue }) {
   return (
-    <section className="upload-layout">
+    <section className="upload-layout page-transition">
       <div className="upload-copy">
         <h2>Upload your clips and edit them in seconds.</h2>
         <p>
@@ -421,9 +486,10 @@ function EditorPage({
   onKickLinkChange,
   onPositionChange,
   onVideoMetadata,
+  isNavigating,
 }) {
   return (
-    <section className="editor-layout">
+    <section className="editor-layout page-transition">
       <div className="preview-panel">
         <div className="preview-stage">
           <div className="video-frame">
@@ -453,19 +519,16 @@ function EditorPage({
                   fontSize={fontSize}
                   isDraggable={position === CAPTION_POSITIONS.custom}
                   onRectChange={onCustomRectChange}
-                  rect={
-                    position === CAPTION_POSITIONS.custom
-                      ? customRect
-                      : exportPlan.captionRenderPlan.rect
-                  }
+                  rect={exportPlan.captionRenderPlan.rect}
                 />
+                <KickWatermarkOverlay exportPlan={exportPlan} />
               </>
             )}
           </div>
         </div>
 
         <div className="preview-footer">
-          <button className="primary-button" disabled={!videoFile} onClick={onExport} type="button">
+          <button className="primary-button" disabled={!videoFile || isNavigating} onClick={onExport} type="button">
             <img alt="" aria-hidden="true" className="button-icon" src="/assets/download-icon.png" />
             <span>Export clip</span>
           </button>
@@ -565,6 +628,30 @@ function CaptionOverlay({
       }}
     >
       <span>{captionText || "Add your caption"}</span>
+    </div>
+  );
+}
+
+function KickWatermarkOverlay({ exportPlan }) {
+  const branding = exportPlan.kickBranding;
+  const overlay = exportPlan.kickBrandingOverlay;
+  const rect = exportPlan.kickBrandingRect ?? overlay?.rect;
+
+  if (!branding?.enabled || !overlay?.logoAssetPath || !rect) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-label="Kick watermark preview"
+      className="kick-watermark-overlay"
+      style={{
+        ...rectToPercentStyle(rect),
+        "--kick-link-font-ratio": (rect.height * KICK_LINK_FONT_RATIO) / INSTAGRAM_REEL_FORMAT.width,
+      }}
+    >
+      <img alt="" aria-hidden="true" className="kick-watermark-logo" src={overlay.logoAssetPath} />
+      <span className="kick-watermark-link">{branding.link.toUpperCase()}</span>
     </div>
   );
 }
@@ -696,7 +783,7 @@ function CaptionSettingsPanel({
   );
 }
 
-function ExportPage({ renderState }) {
+function ExportPage({ isNavigating, onBack, onNewClip, renderState }) {
   const signedUrl = renderState.result?.signedUrl;
   const isComplete = renderState.status === "complete" && signedUrl;
   const hasFailed = renderState.status === "failed";
@@ -716,39 +803,50 @@ function ExportPage({ renderState }) {
   }
 
   return (
-    <section className="export-layout final-export-layout">
-      <div className="final-preview-panel">
-        <div className="preview-stage">
-          <div className="video-frame final-video-frame">
-            {isComplete ? (
-              <video autoPlay loop muted playsInline src={signedUrl} />
-            ) : (
-              <div className="empty-preview">
-                <p>{hasFailed ? "Preview unavailable" : "Preparing preview"}</p>
-                <span>{hasFailed ? "Please try exporting the clip again." : "Your finished clip will appear here."}</span>
-              </div>
-            )}
+    <section className="export-page page-transition">
+      <div className="export-layout final-export-layout">
+        <div className="final-preview-panel">
+          <div className="preview-stage">
+            <div className="video-frame final-video-frame">
+              {isComplete ? (
+                <video autoPlay loop muted playsInline src={signedUrl} />
+              ) : (
+                <div className="empty-preview">
+                  <p>{hasFailed ? "Preview unavailable" : "Preparing preview"}</p>
+                  <span>{hasFailed ? "Please try exporting the clip again." : "Your finished clip will appear here."}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      <aside className="success-panel">
-        <div className={`success-icon ${hasFailed ? "success-icon-failed" : ""}`}>
-          {hasFailed ? "!" : "✓"}
-        </div>
-        <h2>{isComplete ? "Your clip is ready!" : hasFailed ? "Clip needs another try" : "Preparing your clip..."}</h2>
-        <p>
-          {isComplete
-            ? "Your final clip is ready to download."
-            : hasFailed
-              ? renderState.error || "Something went wrong while finishing your clip."
-              : "Finishing your edits now."}
-        </p>
-        <button className="primary-button download-clip-button" disabled={!isComplete} onClick={handleDownload} type="button">
-          <img alt="" aria-hidden="true" className="button-icon" src="/assets/download-icon.png" />
-          <span>Download Clip</span>
-        </button>
-      </aside>
+        <aside className="success-panel">
+          <div className={`success-icon ${hasFailed ? "success-icon-failed" : ""}`}>
+            {hasFailed ? "!" : "✓"}
+          </div>
+          <h2>{isComplete ? "Your clip is ready!" : hasFailed ? "Clip needs another try" : "Preparing your clip..."}</h2>
+          {!isComplete && (
+            <p>
+              {hasFailed
+                ? renderState.error || "Something went wrong while finishing your clip."
+                : "Finishing your edits now."}
+            </p>
+          )}
+          <div className="success-actions">
+            <button className="primary-button download-clip-button" disabled={!isComplete} onClick={handleDownload} type="button">
+              <img alt="" aria-hidden="true" className="button-icon" src="/assets/download-icon.png" />
+              <span>Download Clip</span>
+            </button>
+            <button className="secondary-button back-button" disabled={isNavigating} onClick={onBack} type="button">
+              <span aria-hidden="true">←</span>
+              <span>Back to Editor</span>
+            </button>
+            <button className="secondary-button new-clip-button" disabled={isNavigating} onClick={onNewClip} type="button">
+              <span>New Clip</span>
+            </button>
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }
@@ -795,6 +893,103 @@ function describeUpload(uploadState) {
   if (uploadState.status === "uploaded") return "Upload complete";
   if (uploadState.status === "local-only") return `Local preview only: ${uploadState.error}`;
   return "Not uploaded yet";
+}
+
+async function uploadVideoFile(file) {
+  try {
+    return await uploadVideoWithSignedUrl(file);
+  } catch (signedUploadError) {
+    console.warn("Signed upload failed; falling back to /api/upload.", signedUploadError);
+    return uploadVideoWithMultipartFallback(file);
+  }
+}
+
+async function uploadVideoWithSignedUrl(file) {
+  const uploadUrlResponse = await fetch("/api/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    }),
+  });
+  const uploadUrlData = await readJsonResponse(uploadUrlResponse);
+
+  if (!uploadUrlResponse.ok) {
+    throw new Error(getApiErrorMessage(uploadUrlData) || "Could not create a signed upload URL.");
+  }
+
+  const signedUploadBody = new FormData();
+  signedUploadBody.append("cacheControl", "3600");
+  signedUploadBody.append("", file);
+
+  const storageUploadResponse = await fetch(uploadUrlData.signedUrl, {
+    method: "PUT",
+    headers: {
+      "x-upsert": "false",
+    },
+    body: signedUploadBody,
+  });
+
+  if (!storageUploadResponse.ok) {
+    throw new Error(`Signed storage upload failed with ${storageUploadResponse.status}.`);
+  }
+
+  const completeResponse = await fetch("/api/upload-complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      storagePath: uploadUrlData.storagePath,
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    }),
+  });
+  const completeData = await readJsonResponse(completeResponse);
+
+  if (!completeResponse.ok) {
+    throw new Error(getApiErrorMessage(completeData) || "Upload completed but job creation failed.");
+  }
+
+  return completeData;
+}
+
+async function uploadVideoWithMultipartFallback(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+  const data = await readJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(data) || "Upload failed.");
+  }
+
+  return data;
+}
+
+async function readJsonResponse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function getApiErrorMessage(data) {
+  if (!data) return "";
+  if (typeof data === "string") return data;
+  if (typeof data.error === "string") return data.error;
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.details === "string") return data.details;
+  if (Array.isArray(data.details?.missing)) {
+    return `${data.error || "Missing environment variables"}: ${data.details.missing.join(", ")}`;
+  }
+  return "";
 }
 
 function describeJob(jobState) {

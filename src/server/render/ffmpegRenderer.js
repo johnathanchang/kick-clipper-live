@@ -7,19 +7,21 @@ import { getPackagedFfmpegPath, resolveFfmpegPath } from "./ffmpegPath.js";
 
 const PUBLIC_ASSETS_DIR = path.join(process.cwd(), "public", "assets");
 const FONT_ASSETS_DIR = path.join(PUBLIC_ASSETS_DIR, "fonts");
-const DEFAULT_TWEMOJI_ASSET_DIR = path.join(
+const DEFAULT_APPLE_EMOJI_ASSET_DIR = path.join(
   process.cwd(),
   "node_modules",
-  "@discordapp",
-  "twemoji",
-  "dist",
-  "svg",
+  "emoji-datasource-apple",
+  "img",
+  "apple",
+  "64",
 );
 const KICK_LOGO_PATH = path.join(PUBLIC_ASSETS_DIR, "kick-logo.png");
-const CAPTION_FONT_PATH = path.join(FONT_ASSETS_DIR, "Nunito-Black.ttf");
-const KICK_LINK_FONT_PATH = path.join(FONT_ASSETS_DIR, "Anton-Regular.ttf");
+const BUNDLED_HEAVY_FONT_PATH = path.join(FONT_ASSETS_DIR, "Nunito-Black.ttf");
+const CAPTION_FONT_PATH = BUNDLED_HEAVY_FONT_PATH;
 const CAPTION_FONT_FAMILY = "Nunito Black";
-const KICK_LINK_FONT_FAMILY = "Anton";
+const KICK_LINK_FONT_PATH = resolveComicSansMsFontPath();
+const KICK_LINK_FONT_FAMILY = "Comic Sans MS";
+const KICK_LINK_RENDER_FONT_RATIO = 0.3;
 const EMOJI_SIZE_RATIO = 1.08;
 const EMOJI_ADVANCE_RATIO = 1.16;
 const EMOJI_LEADING_GAP_RATIO = EMOJI_ADVANCE_RATIO - EMOJI_SIZE_RATIO;
@@ -334,6 +336,12 @@ function buildRenderOverlayBackgroundSvg(normalized, kickBranding, captionLayout
 
 export function getKickBrandingRect(payload) {
   const normalized = normalizeRenderPayload(payload);
+  const plannedRect = normalized.kickBrandingRect ?? normalized.kickBrandingOverlay?.rect;
+
+  if (isUsableRect(plannedRect)) {
+    return plannedRect;
+  }
+
   const target = normalized.target;
   const barHeight = Math.round(target.height * 0.056);
   const preferredY = Math.round(target.height * 0.779);
@@ -348,6 +356,16 @@ export function getKickBrandingRect(payload) {
     width: target.width,
     height: barHeight,
   };
+}
+
+function isUsableRect(rect) {
+  return rect
+    && Number.isFinite(Number(rect.x))
+    && Number.isFinite(Number(rect.y))
+    && Number.isFinite(Number(rect.width))
+    && Number.isFinite(Number(rect.height))
+    && rect.width > 0
+    && rect.height > 0;
 }
 
 function createApproximateCaptionLayout(normalized) {
@@ -509,23 +527,37 @@ async function createInlineLineComposites(line, options) {
 
 async function createKickLinkRasterComposite(normalized, kickBranding) {
   const rect = getKickBrandingRect(normalized);
-  const logoWidth = Math.round(rect.width * 0.22);
-  const logoX = Math.round(rect.x + rect.width * 0.065);
-  const linkX = Math.round(logoX + logoWidth + rect.width * 0.052);
-  const linkFontSize = Math.round(rect.height * 0.44);
-  const layer = await renderFauxBoldTextRunPng({
+  const rightPadding = Math.round(rect.width * 0.065);
+  const linkFontSize = Math.round(rect.height * KICK_LINK_RENDER_FONT_RATIO);
+  const layer = await renderTextRunPng({
     text: kickBranding.link.toUpperCase(),
     fontSize: linkFontSize,
     color: "#ffffff",
     fontFamily: KICK_LINK_FONT_FAMILY,
     fontPath: KICK_LINK_FONT_PATH,
-  }, 2);
+  });
 
   return {
     input: layer.buffer,
-    left: linkX,
+    left: Math.round(rect.x + rect.width - rightPadding - layer.width),
     top: Math.round(rect.y + (rect.height - layer.height) / 2),
   };
+}
+
+function resolveComicSansMsFontPath() {
+  const candidates = [
+    process.env.COMIC_SANS_MS_FONT_PATH,
+    path.join(FONT_ASSETS_DIR, "Comic Sans MS Bold.ttf"),
+    path.join(FONT_ASSETS_DIR, "Comic Sans MS.ttf"),
+    "/System/Library/Fonts/Supplemental/Comic Sans MS Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Comic Sans MS.ttf",
+    "/Library/Fonts/Comic Sans MS Bold.ttf",
+    "/Library/Fonts/Comic Sans MS.ttf",
+    "C:\\Windows\\Fonts\\comicbd.ttf",
+    "C:\\Windows\\Fonts\\comic.ttf",
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? BUNDLED_HEAVY_FONT_PATH;
 }
 
 function buildCaptionBackgroundSvgLayer(layout) {
@@ -543,9 +575,8 @@ function buildKickBrandingSvgLayer(normalized) {
   const rect = getKickBrandingRect(normalized);
   const logoWidth = Math.round(rect.width * 0.22);
   const logoHeight = Math.round(rect.height * 0.68);
-  const centerY = rect.y + rect.height / 2;
   const logoX = Math.round(rect.x + rect.width * 0.065);
-  const logoY = Math.round(centerY - logoHeight / 2);
+  const logoY = Math.round(rect.y - logoHeight * 0.2);
   const logoDataUri = assetDataUri(KICK_LOGO_PATH, "image/png");
 
   return [
@@ -804,33 +835,6 @@ async function transparentPng(width, height) {
   }).png().toBuffer();
 }
 
-async function renderFauxBoldTextRunPng(options, extraPixels = 1) {
-  const baseLayer = await renderTextRunPng(options);
-  const offsets = Array.from({ length: extraPixels + 1 }, (_, index) => index);
-  const width = baseLayer.width + extraPixels;
-  const { data, info } = await sharp({
-    create: {
-      width,
-      height: baseLayer.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite(offsets.map((left) => ({
-      input: baseLayer.buffer,
-      left,
-      top: 0,
-    })))
-    .png()
-    .toBuffer({ resolveWithObject: true });
-
-  return {
-    buffer: data,
-    width: info.width,
-    height: info.height,
-  };
-}
-
 async function renderEmojiTokenPng(token, size, opacity = 1) {
   const emoji = token.emoji;
   const cacheKey = `${emoji?.assetPath ?? token.value}:${size}:${opacity}`;
@@ -915,11 +919,10 @@ function tokenizeCaptionLine(line) {
 
 function parseCaptionEmojiTokens(text) {
   return parseTwemoji(String(text)).map((emoji) => {
-    const assetFilename = emojiAssetFilename(emoji);
-    const assetPath = assetFilename ? path.join(getTwemojiAssetDir(), assetFilename) : null;
-    const codepoints = assetFilename
-      ? assetFilename.replace(/\.svg$/i, "")
-      : codepointsFromText(emoji.text);
+    const codepoints = codepointsFromText(emoji.text);
+    const parserCodepoints = emojiParserCodepoints(emoji);
+    const assetFilename = resolveAppleEmojiAssetFilename(codepoints, parserCodepoints);
+    const assetPath = assetFilename ? path.join(getAppleEmojiAssetDir(), assetFilename) : null;
 
     return {
       ...emoji,
@@ -931,15 +934,47 @@ function parseCaptionEmojiTokens(text) {
   });
 }
 
-function getTwemojiAssetDir() {
-  return process.env.TWEMOJI_ASSET_DIR || DEFAULT_TWEMOJI_ASSET_DIR;
+function getAppleEmojiAssetDir() {
+  return process.env.APPLE_EMOJI_ASSET_DIR || DEFAULT_APPLE_EMOJI_ASSET_DIR;
 }
 
-function emojiAssetFilename(emoji) {
+function resolveAppleEmojiAssetFilename(...codepointCandidates) {
+  for (const codepoints of uniqueCodepointCandidates(codepointCandidates)) {
+    const filename = `${codepoints}.png`;
+    if (existsSync(path.join(getAppleEmojiAssetDir(), filename))) {
+      return filename;
+    }
+  }
+
+  return codepointCandidates.find(Boolean) ? `${codepointCandidates.find(Boolean)}.png` : null;
+}
+
+function uniqueCodepointCandidates(codepointCandidates) {
+  const candidates = [];
+
+  for (const candidate of codepointCandidates) {
+    const normalized = normalizeEmojiCodepoints(candidate);
+
+    if (normalized && !candidates.includes(normalized)) {
+      candidates.push(normalized);
+    }
+
+    const textPresentation = stripEmojiVariationSelectors(normalized);
+    if (textPresentation && !candidates.includes(textPresentation)) {
+      candidates.push(textPresentation);
+    }
+  }
+
+  return candidates;
+}
+
+function emojiParserCodepoints(emoji) {
   try {
     const url = new URL(emoji.url);
     const filename = path.basename(url.pathname);
-    return /^[0-9a-f-]+\.svg$/i.test(filename) ? filename.toLowerCase() : null;
+    return /^[0-9a-f-]+\.svg$/i.test(filename)
+      ? filename.replace(/\.svg$/i, "").toLowerCase()
+      : null;
   } catch {
     return null;
   }
@@ -948,6 +983,24 @@ function emojiAssetFilename(emoji) {
 function codepointsFromText(text) {
   return Array.from(text)
     .map((char) => char.codePointAt(0).toString(16))
+    .join("-");
+}
+
+function normalizeEmojiCodepoints(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.png$/i, "")
+    .replace(/\.svg$/i, "")
+    .replace(/[^0-9a-f-]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function stripEmojiVariationSelectors(codepoints) {
+  return normalizeEmojiCodepoints(codepoints)
+    .split("-")
+    .filter((codepoint) => codepoint !== "fe0f" && codepoint !== "fe0e")
     .join("-");
 }
 
@@ -1000,6 +1053,13 @@ function escapePangoMarkup(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function escapeSvgText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 function preserveSpacesForPango(value) {

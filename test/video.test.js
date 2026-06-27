@@ -100,18 +100,48 @@ test("export placeholder honors a safe selected caption position", () => {
   assert.equal(plan.requestedCaption.adjustedForSafety, false);
 });
 
-test("export placeholder moves risky custom captions when watermark avoidance is enabled", () => {
+test("export placeholder preserves explicit caption positions", () => {
+  const top = createKickClipExportPlan({
+    source: { width: 1920, height: 1080 },
+    captionText: "Top caption",
+    captionPosition: CAPTION_POSITIONS.top,
+    avoidWatermark: true,
+  });
+  const middle = createKickClipExportPlan({
+    source: { width: 1920, height: 1080 },
+    captionText: "Middle caption",
+    captionPosition: CAPTION_POSITIONS.middle,
+    avoidWatermark: true,
+  });
+  const lowerSafe = createKickClipExportPlan({
+    source: { width: 1920, height: 1080 },
+    captionText: "Lower caption",
+    captionPosition: CAPTION_POSITIONS.lowerSafe,
+    avoidWatermark: true,
+  });
+
+  assert.equal(top.captionRect.y, getCaptionRect(CAPTION_POSITIONS.top, reelFrame).y);
+  assert.equal(middle.captionRect.y, getCaptionRect(CAPTION_POSITIONS.middle, reelFrame).y);
+  assert.equal(lowerSafe.captionRect.y, getCaptionRect(CAPTION_POSITIONS.lowerSafe, reelFrame).y);
+  assert.equal(top.requestedCaption.adjustedForSafety, false);
+  assert.equal(middle.requestedCaption.adjustedForSafety, false);
+  assert.equal(lowerSafe.requestedCaption.adjustedForSafety, false);
+});
+
+test("export placeholder preserves explicit custom captions when watermark avoidance is enabled", () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
-    captionText: "Move this caption",
+    captionText: "Keep this caption",
     captionPosition: CAPTION_POSITIONS.custom,
     customRect: { x: 760, y: 1500, width: 280, height: 180 },
     avoidWatermark: true,
   });
 
   assert.equal(plan.requestedCaption.requestedPosition, CAPTION_POSITIONS.custom);
-  assert.equal(plan.requestedCaption.position, CAPTION_POSITIONS.lowerSafe);
-  assert.equal(plan.requestedCaption.adjustedForSafety, true);
+  assert.equal(plan.requestedCaption.position, CAPTION_POSITIONS.custom);
+  assert.deepEqual(plan.captionRect, { x: 760, y: 1500, width: 280, height: 180 });
+  assert.equal(plan.requestedCaption.adjustedForSafety, false);
+  assert.ok(plan.requestedCaption.risk.score > 0);
 });
 
 test("export placeholder includes classic TikTok white caption style and Kick link bar", () => {
@@ -133,6 +163,8 @@ test("export placeholder includes classic TikTok white caption style and Kick li
   assert.equal(plan.kickBranding.link, "kick.com/adinross");
   assert.equal(plan.kickBranding.style.logoAssetPath, "/brand/kick-logo.png");
   assert.equal(plan.kickBrandingOverlay.logoAssetPath, "/brand/kick-logo.png");
+  assert.deepEqual(plan.kickBrandingRect, plan.kickBrandingOverlay.rect);
+  assert.deepEqual(plan.kickBrandingRect, { x: 0, y: 1496, width: 1080, height: 108 });
   assert.equal(plan.kickBrandingOverlay.type, "kick-branding-placeholder");
   assert.match(plan.ffmpeg.argsPreview.join(" "), /fontcolor=black/);
   assert.match(plan.ffmpeg.argsPreview.join(" "), /boxcolor=white@0\.96/);
@@ -372,6 +404,9 @@ test("renderer creates text-free SVG primitives and raster PNG overlay content",
 
   assert.ok(existsSync(fontAssets.caption));
   assert.ok(existsSync(fontAssets.kickLink));
+  assert.match(fontAssets.caption, /Nunito-Black\.ttf$/);
+  assert.match(fontAssets.kickLink, /Comic Sans MS/i);
+  assert.notEqual(fontAssets.kickLink, fontAssets.caption);
   assert.match(svg, /<svg/);
   assert.match(svg, /width="1080"/);
   assert.match(svg, /height="1920"/);
@@ -387,12 +422,12 @@ test("renderer creates text-free SVG primitives and raster PNG overlay content",
   assert.equal(metadata.hasAlpha, true);
 });
 
-test("renderer uses Twemoji image assets for the acceptance caption emojis", async () => {
+test("renderer uses Apple image assets for the acceptance caption emojis", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
     outputPath: "renders/output.mp4",
-    captionText: "Chat went wild for this moment 😂😭😤🔥💀🙏",
+    captionText: "W chat 😂🔥💀❤️👏",
     captionStyle: { background: "white", fontSize: 52 },
     kickBranding: { enabled: false },
     avoidWatermark: true,
@@ -405,12 +440,11 @@ test("renderer uses Twemoji image assets for the acceptance caption emojis", asy
     assert.equal(metadata.height, 1920);
   });
 
-  assert.match(logs, /Found emoji 😂\nUnicode: U\+1F602\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f602\.svg/);
-  assert.match(logs, /Found emoji 😭\nUnicode: U\+1F62D\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f62d\.svg/);
-  assert.match(logs, /Found emoji 😤\nUnicode: U\+1F624\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f624\.svg/);
-  assert.match(logs, /Found emoji 🔥\nUnicode: U\+1F525\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f525\.svg/);
-  assert.match(logs, /Found emoji 💀\nUnicode: U\+1F480\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f480\.svg/);
-  assert.match(logs, /Found emoji 🙏\nUnicode: U\+1F64F\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f64f\.svg/);
+  assert.match(logs, /Found emoji 😂\nUnicode: U\+1F602\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f602\.png/);
+  assert.match(logs, /Found emoji 🔥\nUnicode: U\+1F525\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f525\.png/);
+  assert.match(logs, /Found emoji 💀\nUnicode: U\+1F480\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f480\.png/);
+  assert.match(logs, /Found emoji ❤️\nUnicode: U\+2764 U\+FE0F\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/2764-fe0f\.png/);
+  assert.match(logs, /Found emoji 👏\nUnicode: U\+1F44F\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f44f\.png/);
   assert.doesNotMatch(logs, /Asset lookup failed/);
 });
 
@@ -419,7 +453,7 @@ test("renderer normalizes variation selectors, skin tones, and ZWJ emoji sequenc
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
     outputPath: "renders/output.mp4",
-    captionText: "Unicode check ❤️ 👋🏽 👨‍👩‍👧‍👦",
+    captionText: "Unicode check ❤️ 👋🏽 👨‍👩‍👧‍👦 🇺🇸",
     captionStyle: { background: "white", fontSize: 52 },
     kickBranding: { enabled: false },
     avoidWatermark: true,
@@ -432,12 +466,13 @@ test("renderer normalizes variation selectors, skin tones, and ZWJ emoji sequenc
     assert.equal(metadata.height, 1920);
   });
 
-  assert.match(logs, /Unicode: U\+2764\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/2764\.svg/);
-  assert.match(logs, /Unicode: U\+1F44B U\+1F3FD\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f44b-1f3fd\.svg/);
-  assert.match(logs, /Unicode: U\+1F468 U\+200D U\+1F469 U\+200D U\+1F467 U\+200D U\+1F466\nAsset: node_modules\/@discordapp\/twemoji\/dist\/svg\/1f468-200d-1f469-200d-1f467-200d-1f466\.svg/);
+  assert.match(logs, /Unicode: U\+2764 U\+FE0F\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/2764-fe0f\.png/);
+  assert.match(logs, /Unicode: U\+1F44B U\+1F3FD\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f44b-1f3fd\.png/);
+  assert.match(logs, /Unicode: U\+1F468 U\+200D U\+1F469 U\+200D U\+1F467 U\+200D U\+1F466\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f468-200d-1f469-200d-1f467-200d-1f466\.png/);
+  assert.match(logs, /Unicode: U\+1F1FA U\+1F1F8\nAsset: node_modules\/emoji-datasource-apple\/img\/apple\/64\/1f1fa-1f1f8\.png/);
 });
 
-test("renderer renders a bundled-font placeholder when a parsed Twemoji asset is missing", async () => {
+test("renderer renders a neutral placeholder when a parsed Apple emoji asset is missing", async () => {
   const plan = createKickClipExportPlan({
     source: { width: 1920, height: 1080 },
     sourcePath: "uploads/source.mp4",
@@ -447,8 +482,8 @@ test("renderer renders a bundled-font placeholder when a parsed Twemoji asset is
     kickBranding: { enabled: false },
     avoidWatermark: true,
   });
-  const originalAssetDir = process.env.TWEMOJI_ASSET_DIR;
-  process.env.TWEMOJI_ASSET_DIR = "/tmp/kick-clipper-missing-twemoji-assets";
+  const originalAssetDir = process.env.APPLE_EMOJI_ASSET_DIR;
+  process.env.APPLE_EMOJI_ASSET_DIR = "/tmp/kick-clipper-missing-apple-emoji-assets";
   const logs = await captureConsoleInfoAsync(async () => {
     try {
       const png = await createRenderOverlayPngBuffer(plan);
@@ -458,14 +493,14 @@ test("renderer renders a bundled-font placeholder when a parsed Twemoji asset is
       assert.equal(metadata.height, 1920);
     } finally {
       if (originalAssetDir === undefined) {
-        delete process.env.TWEMOJI_ASSET_DIR;
+        delete process.env.APPLE_EMOJI_ASSET_DIR;
       } else {
-        process.env.TWEMOJI_ASSET_DIR = originalAssetDir;
+        process.env.APPLE_EMOJI_ASSET_DIR = originalAssetDir;
       }
     }
   });
 
-  assert.match(logs, /Found emoji 🙂‍↔️\nUnicode: U\+1F642 U\+200D U\+2194 U\+FE0F\nAsset lookup failed: 1f642-200d-2194-fe0f\.svg/);
+  assert.match(logs, /Found emoji 🙂‍↔️\nUnicode: U\+1F642 U\+200D U\+2194 U\+FE0F\nAsset lookup failed: 1f642-200d-2194-fe0f\.png/);
 });
 
 test("renderer includes Kick watermark bar when enabled", async () => {

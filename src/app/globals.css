@@ -1,6 +1,24 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Kick Caption";
+  font-display: block;
+  font-style: normal;
+  font-weight: 900;
+  src: url("/assets/fonts/Nunito-Black.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Kick Link Comic Sans";
+  font-display: block;
+  font-style: normal;
+  font-weight: 700 900;
+  src:
+    local("Comic Sans MS Bold"),
+    local("Comic Sans MS");
+}
+
 :root {
   color: #f5f7f2;
   background: #000000;
@@ -58,7 +76,7 @@ button:disabled {
 }
 
 .app-shell-export {
-  width: min(1240px, calc(100% - 32px));
+  width: min(880px, calc(100% - 32px));
   padding-top: 36px;
 }
 
@@ -90,12 +108,16 @@ button:disabled {
   gap: 18px;
 }
 
-.app-footer a {
+.app-footer button {
+  border: 0;
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
+  padding: 0;
   text-decoration: none;
 }
 
-.app-footer a:hover {
+.app-footer button:hover {
   color: var(--kick-green);
 }
 
@@ -172,6 +194,10 @@ p {
 .export-layout {
   display: grid;
   gap: 24px;
+}
+
+.page-transition {
+  animation: page-enter 260ms ease both;
 }
 
 .upload-layout {
@@ -430,7 +456,8 @@ p {
 }
 
 .safe-zone-layer,
-.caption-overlay {
+.caption-overlay,
+.kick-watermark-overlay {
   position: absolute;
 }
 
@@ -473,6 +500,39 @@ p {
   overflow: visible;
   padding: 8px 14px;
   pointer-events: none;
+  z-index: 3;
+}
+
+.kick-watermark-overlay {
+  overflow: visible;
+  background: rgba(3, 3, 3, 0.94);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.kick-watermark-logo {
+  position: absolute;
+  left: 6.5%;
+  top: -14%;
+  width: 22%;
+  height: 68%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.kick-watermark-link {
+  position: absolute;
+  right: 6.5%;
+  top: 50%;
+  color: #ffffff;
+  font-family: "Kick Link Comic Sans", "Comic Sans MS", "Comic Sans", cursive;
+  font-size: clamp(10px, calc(var(--kick-link-font-ratio) * 100cqw), 28px);
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: translateY(-50%);
+  white-space: nowrap;
 }
 
 .caption-overlay span {
@@ -480,7 +540,7 @@ p {
   border-radius: 7px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  font-family: "Work Sans", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Kick Caption", "Arial Black", sans-serif;
   font-weight: 900;
   line-height: 1.16;
   overflow-wrap: anywhere;
@@ -911,14 +971,18 @@ input[type="range"] {
 }
 
 .final-export-layout {
-  align-items: center;
+  align-items: stretch;
   display: grid;
-  gap: 56px;
-  grid-template-columns: minmax(460px, 1.1fr) minmax(320px, 0.65fr);
+  gap: 24px;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
   justify-items: stretch;
   margin-inline: auto;
-  max-width: 1200px;
+  max-width: 880px;
   width: 100%;
+}
+
+.export-page {
+  display: grid;
 }
 
 .final-preview-panel {
@@ -931,12 +995,15 @@ input[type="range"] {
 .final-preview-panel .preview-stage {
   display: grid;
   justify-items: center;
+  height: 100%;
   width: 100%;
 }
 
 .final-video-frame {
-  width: min(100%, 520px);
-  min-width: min(360px, 100%);
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  aspect-ratio: auto;
   border: 1px solid rgba(83, 252, 24, 0.58);
   box-shadow: 0 24px 90px rgba(0, 0, 0, 0.46);
 }
@@ -985,6 +1052,29 @@ input[type="range"] {
   font-size: 1.02rem;
 }
 
+.success-actions {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.new-clip-button {
+  min-height: 58px;
+  width: 100%;
+  font-size: 1.02rem;
+}
+
+.success-actions .back-button {
+  min-height: 58px;
+  width: 100%;
+  font-size: 1.02rem;
+}
+
+.new-clip-button:hover:not(:disabled),
+.back-button:hover:not(:disabled) {
+  background: rgba(83, 252, 24, 0.14);
+}
+
 .status-dot {
   width: 10px;
   height: 10px;
@@ -996,6 +1086,18 @@ input[type="range"] {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -1062,5 +1164,11 @@ input[type="range"] {
 
   .safe-zone span {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none;
   }
 }

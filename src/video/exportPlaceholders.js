@@ -8,6 +8,8 @@ import { createPersonAwareReelPlan } from "./personFraming.js";
 import { createCaptionRenderPlan, createDrawTextPlaceholder } from "./rendering.js";
 import { getDefaultSafeZones } from "./safeZones.js";
 
+const KICK_BRANDING_LOGO_ASSET_PATH = "/brand/kick-logo.png";
+
 /**
  * Builds an export plan without running FFmpeg. Backend can replace this with
  * real process execution while keeping the same inputs and caption decisions.
@@ -47,7 +49,7 @@ export function createKickClipExportPlan(input) {
   });
   const drawText = createDrawTextPlaceholder(captionRenderPlan);
   const kickBranding = resolveKickBranding(input.kickBranding);
-  const kickBrandingOverlay = createKickBrandingPlaceholder(kickBranding, frame);
+  const kickBrandingOverlay = createKickBrandingPlaceholder(kickBranding, frame, captionRenderPlan.rect);
 
   return {
     status: "planned",
@@ -67,6 +69,7 @@ export function createKickClipExportPlan(input) {
     captionRect: captionRenderPlan.rect,
     kickBranding,
     kickBrandingOverlay,
+    kickBrandingRect: kickBrandingOverlay.rect,
     safeZones,
     ffmpeg: {
       executable: input.ffmpegPath ?? null,
@@ -86,7 +89,7 @@ export function createKickClipExportPlan(input) {
   };
 }
 
-function createKickBrandingPlaceholder(branding, frame) {
+function createKickBrandingPlaceholder(branding, frame, captionRect) {
   if (!branding.enabled) {
     return {
       type: "kick-branding-placeholder",
@@ -95,26 +98,30 @@ function createKickBrandingPlaceholder(branding, frame) {
     };
   }
 
-  const barHeight = Math.round(frame.height * 0.056);
-  const barY = Math.round(frame.height * 0.779);
+  const rect = getKickBrandingOverlayRect(frame, captionRect);
+  const barHeight = rect.height;
+  const barY = rect.y;
+  const rightPadding = Math.round(frame.width * 0.065);
   const logoFontSize = Math.round(barHeight * 0.72);
+  const logoY = Math.round(barY - logoFontSize * 0.2);
   const linkFontSize = Math.round(barHeight * 0.34);
 
   return {
     type: "kick-branding-placeholder",
+    rect,
     logoAssetPath: branding.style.logoAssetPath,
     filters: [
       `drawbox=x=0:y=${barY}:w=iw:h=${barHeight}:color=black@0.96:t=fill`,
       [
         `drawtext=text='KICK'`,
         "x=72",
-        `y=${barY + Math.round(barHeight * 0.12)}`,
+        `y=${logoY}`,
         `fontsize=${logoFontSize}`,
         "fontcolor=0x53fc18",
       ].join(":"),
       [
         `drawtext=text='${escapeDrawText(branding.link.toUpperCase())}'`,
-        "x=(w-text_w)/2",
+        `x=w-text_w-${rightPadding}`,
         `y=${barY + Math.round(barHeight * 0.32)}`,
         `fontsize=${linkFontSize}`,
         "fontcolor=white",
@@ -130,11 +137,27 @@ function resolveKickBranding(branding = {}) {
     link: normalizeKickLink(branding.link),
     style: {
       barColor: "black",
-      logoAssetPath: "/brand/kick-logo.png",
+      logoAssetPath: KICK_BRANDING_LOGO_ASSET_PATH,
       logoColor: "#53fc18",
       textColor: "white",
       placement: "lower-horizontal-bar",
     },
+  };
+}
+
+function getKickBrandingOverlayRect(frame, captionRect) {
+  const barHeight = Math.round(frame.height * 0.056);
+  const preferredY = Math.round(frame.height * 0.779);
+  const captionBottom = captionRect.y + captionRect.height;
+  const gap = Math.round(frame.height * 0.018);
+  const maxY = frame.height - barHeight - Math.round(frame.height * 0.045);
+  const y = Math.min(Math.max(preferredY, captionBottom + gap), maxY);
+
+  return {
+    x: 0,
+    y,
+    width: frame.width,
+    height: barHeight,
   };
 }
 
@@ -165,7 +188,7 @@ function resolveRequestedCaption(input, frame, safeZones, bestCaption) {
     ignoreWatermarkZones: !(input.avoidWatermark ?? true),
   });
 
-  if ((input.avoidWatermark ?? true) && requestedRisk.score > 0) {
+  if (!input.captionPosition && (input.avoidWatermark ?? true) && requestedRisk.score > 0) {
     return {
       position: bestCaption.position,
       rect: bestCaption.rect,
