@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -395,6 +396,13 @@ function Header() {
       <div>
         <h1 className="brand-title">Kick Clipper</h1>
       </div>
+      <nav className="top-nav" aria-label="Primary navigation">
+        <Link href="/dashboard">Dashboard</Link>
+        <Link href="/clips">My Clips</Link>
+        <Link href="/features">Features</Link>
+        <Link href="/pricing">Pricing</Link>
+        <Link href="/login">Login</Link>
+      </nav>
     </header>
   );
 }
@@ -423,44 +431,115 @@ function Footer() {
 }
 
 function UploadPage({ jobState, uploadState, videoFile, onVideoUpload, onContinue }) {
+  function scrollToFeatures() {
+    document.getElementById("viral-features")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
   return (
-    <section className="upload-layout page-transition">
-      <div className="upload-copy">
-        <h2>Upload your clips and edit them in seconds.</h2>
+    <>
+      <section className="upload-layout page-transition">
+        <div className="upload-copy">
+          <h2>Upload your videos and create viral clips in seconds.</h2>
+          <p>
+            Upload your videos or directly from a Kick stream. Kick Clipper takes
+            the most viral moments and turns them into edited clips eligible to be
+            paid out on clipping platforms.
+          </p>
+          <div className="upload-copy-actions">
+            <button className="secondary-button" onClick={scrollToFeatures} type="button">
+              Explore viral features
+            </button>
+          </div>
+          <p className="clipping-opportunity">
+            Looking for clipping opportunities?{" "}
+            <a href="https://clipping.net" rel="noreferrer" target="_blank">
+              Click here
+            </a>
+          </p>
+        </div>
+
+        <div className="upload-panel">
+          <label className="drop-zone">
+            <input accept="video/*" onChange={onVideoUpload} type="file" />
+            <span className="drop-title">Choose video</span>
+            <span className="drop-help">MP4, MOV, or WebM clip</span>
+          </label>
+
+          <UploadStatus uploadState={uploadState} />
+          <JobStatus jobState={jobState} />
+
+          {videoFile && (
+            <div className="file-ready">
+              <div>
+                <p>{videoFile.name}</p>
+                <span>{formatFileSize(videoFile.size)}</span>
+              </div>
+              <button className="primary-button" onClick={onContinue} type="button">
+                Open editor
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <FeaturesSection />
+      <p className="beta-pricing-note">
+        Join during beta for $15/month, and you’ll keep that price for as long as your subscription stays active.
+      </p>
+    </>
+  );
+}
+
+function FeaturesSection() {
+  const features = [
+    {
+      title: "Viral caption styling",
+      body: "Bold TikTok-style captions, emoji support, and background options make the clip readable in a fast scroll.",
+    },
+    {
+      title: "Monetization-ready branding",
+      body: "A Kick watermark bar keeps the creator link visible while the exported reel stays ready for clipping workflows.",
+    },
+    {
+      title: "9:16 reel exports",
+      body: "Wide videos are converted into vertical reels with crop planning built for TikTok, Shorts, and Reels.",
+    },
+    {
+      title: "Safe-zone placement",
+      body: "Caption positions are designed to avoid the lower UI, watermark areas, and other zones that can hurt retention.",
+    },
+    {
+      title: "Fast edit-to-export loop",
+      body: "Preview, adjust captions, move custom text, export, go back to edit, or start a new clip without rebuilding the session.",
+    },
+    {
+      title: "Rendered final clips",
+      body: "The export flow burns in captions, emoji, crop, and branding so the downloaded file is ready to post.",
+    },
+  ];
+
+  return (
+    <section className="features-section" id="viral-features">
+      <div className="features-heading">
+        <span className="eyebrow">Viral clip engine</span>
+        <h2>Built to turn Kick moments into monetizable reels.</h2>
         <p>
-          Upload your videos or directly from a Kick stream. Kick Clipper takes
-          the most viral moments and turns them into edited clips eligible to be
-          paid out on clipping platforms.
-        </p>
-        <p className="clipping-opportunity">
-          Looking for clipping opportunities?{" "}
-          <a href="https://clipping.net" rel="noreferrer" target="_blank">
-            Click here
-          </a>
+          Kick Clipper focuses the whole workflow on retention, readability, and
+          platform-ready exports so clippers can move from raw stream moments to
+          polished vertical clips quickly.
         </p>
       </div>
 
-      <div className="upload-panel">
-        <label className="drop-zone">
-          <input accept="video/*" onChange={onVideoUpload} type="file" />
-          <span className="drop-title">Choose video</span>
-          <span className="drop-help">MP4, MOV, or WebM clip</span>
-        </label>
-
-        <UploadStatus uploadState={uploadState} />
-        <JobStatus jobState={jobState} />
-
-        {videoFile && (
-          <div className="file-ready">
-            <div>
-              <p>{videoFile.name}</p>
-              <span>{formatFileSize(videoFile.size)}</span>
-            </div>
-            <button className="primary-button" onClick={onContinue} type="button">
-              Open editor
-            </button>
-          </div>
-        )}
+      <div className="features-grid">
+        {features.map((feature) => (
+          <article className="feature-card" key={feature.title}>
+            <h3>{feature.title}</h3>
+            <p>{feature.body}</p>
+          </article>
+        ))}
       </div>
     </section>
   );
